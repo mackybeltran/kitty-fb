@@ -1,5 +1,5 @@
 import * as express from "express";
-import {createUser, createGroup} from "./services/firestore";
+import {createUser, createGroup, addUserToGroup} from "./services/firestore";
 
 const app = express();
 app.use(express.json());
@@ -36,6 +36,39 @@ app.post("/groups/new", async (req, res) => {
     return res.status(500).json({
       error: "Failed to create group",
       details: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+});
+
+// Handle adding a user to a group
+app.post("/groups/:groupId/members", async (req, res) => {
+  const {groupId} = req.params;
+  const {userId} = req.body;
+
+  if (!userId) {
+    return res.status(400).json({error: "Missing userId"});
+  }
+
+  try {
+    await addUserToGroup(userId, groupId);
+    return res.status(200).json({message: "User added to group successfully"});
+  } catch (error: unknown) {
+    console.error("Error adding user to group:", error);
+
+    const errorMessage = error instanceof Error ?
+      error.message : "Unknown error";
+
+    if (errorMessage.includes("not found")) {
+      return res.status(404).json({error: errorMessage});
+    }
+
+    if (errorMessage.includes("already a member")) {
+      return res.status(409).json({error: errorMessage});
+    }
+
+    return res.status(500).json({
+      error: "Failed to add user to group",
+      details: errorMessage,
     });
   }
 });
