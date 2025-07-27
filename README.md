@@ -76,6 +76,23 @@ A Firebase Cloud Functions API for managing users and groups in a kitty (shared 
   }
   ```
 
+### Add User to Group
+- **URL:** `{your-function-url}/groups/{groupId}/members`
+- **Method:** POST
+- **Body:**
+  ```json
+  {
+    "userId": "user123"
+  }
+  ```
+- **Parameters:**
+  - `groupId` (path parameter): The ID of the group to add the user to
+- **Response:** `200` status with `{"message": "User added to group successfully"}`
+- **Error Responses:**
+  - `400`: Missing userId
+  - `404`: User or group not found
+  - `409`: User is already a member of the group
+
 ## Local Development
 
 Start Firebase emulators:
@@ -126,9 +143,30 @@ Local endpoints will be available at:
    ```
 6. Click **Send**
 
+**Add user to group:**
+1. Create new request in Postman
+2. Set method to **POST**
+3. URL: `http://localhost:5001/{project-id}/us-central1/api/groups/{groupId}/members`
+   - Replace `{groupId}` with actual group ID
+4. Go to **Headers** tab:
+   - Key: `Content-Type`
+   - Value: `application/json`
+5. Go to **Body** tab:
+   - Select **raw**
+   - Choose **JSON** from dropdown
+   - Enter:
+   ```json
+   {
+     "userId": "user123"
+   }
+   ```
+   - Replace `user123` with actual user ID
+6. Click **Send**
+
 **Expected responses:**
 - Success: `201` status with `{"userId": "..."}` or `{"groupId": "..."}`
-- Error: `400` for missing fields, `500` for server errors
+- Success (add to group): `200` status with `{"message": "User added to group successfully"}`
+- Error: `400` for missing fields, `404` for not found, `409` for conflicts, `500` for server errors
 
 ## Project Structure
 
