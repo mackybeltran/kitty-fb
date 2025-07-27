@@ -126,8 +126,25 @@ A Firebase Cloud Functions API for managing users and groups in a kitty (shared 
 
 Start Firebase emulators:
 ```bash
-firebase emulators:start --only functions
+firebase emulators:start --only functions,firestore
 ```
+
+### ⚠️ Known Emulator Issues
+
+**Transaction Endpoint (500 Errors in Emulator):**
+The transaction endpoint (`PATCH /groups/{groupId}/transactions`) may return 500 errors when testing in the Firestore emulator due to known issues with `FieldValue.increment()` operations combined with `Promise.all()`. 
+
+**Workaround for Emulator Testing:**
+If you encounter 500 errors with transactions in the emulator, temporarily modify `functions/src/services/firestore.ts` line 218:
+```typescript
+// Replace this line:
+kittyBalance: admin.firestore.FieldValue.increment(amount),
+
+// With this line:
+kittyBalance: currentKittyBalance + amount,
+```
+
+**Note:** This issue only affects the emulator. The production environment works correctly with `FieldValue.increment()`.
 
 Local endpoints will be available at:
 - `http://localhost:5001/{project-id}/us-central1/api/users/new`

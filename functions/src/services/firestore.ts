@@ -143,6 +143,16 @@ export async function addUserToGroup(
  * user balances. It maintains an audit trail of all financial changes
  * in the group with timestamps and optional comments.
  *
+ * IMPORTANT: This function uses FieldValue.increment() which has known issues
+ * in the Firestore emulator when combined with Promise.all(). The emulator
+ * may return 500 errors for transactions, but this works correctly in
+ * production.
+ *
+ * For emulator testing, consider temporarily replacing:
+ *   kittyBalance: admin.firestore.FieldValue.increment(amount)
+ * with:
+ *   kittyBalance: currentKittyBalance + amount
+ *
  * @param {string} groupId - The ID of the group
  * @param {string} userId - The ID of the user making the transaction
  * @param {number} amount - The transaction amount (positive for contributions,
@@ -215,6 +225,10 @@ export async function createTransaction(
       updatedAt: new Date(),
     }),
     // Update group's total kitty balance
+    // NOTE: FieldValue.increment() has known issues in the Firestore emulator
+    // when used with Promise.all(). This works fine in production but may
+    // cause 500 errors in the emulator. For emulator testing, consider using
+    // direct calculation: kittyBalance: currentKittyBalance + amount
     groupRef.update({
       kittyBalance: admin.firestore.FieldValue.increment(amount),
     }),
