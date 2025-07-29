@@ -1,9 +1,9 @@
 import * as admin from "firebase-admin";
 
 /**
- * VALIDATION SERVICE
+ * VALIDATION UTILITIES
  *
- * This file contains all database validation functions used across the
+ * This file contains all database validation utility functions used across the
  * application. These functions handle common validation patterns like
  * checking if entities exist and validating relationships between
  * entities.
@@ -98,18 +98,20 @@ export async function validateGroupExists(
  * @return {Promise<{userGroupRef: admin.firestore.DocumentReference,
  * groupMemberRef: admin.firestore.DocumentReference}>}
  * Document references for both sides of the relationship
- * @throws {Error} "User not found" if user doesn't exist
- * @throws {Error} "Group not found" if group doesn't exist
- * @throws {Error} "User is not a member of this group"
- * if membership doesn't exist
+ * @throws {Error} "User not found" if the user doesn't exist
+ * @throws {Error} "Group not found" if the group doesn't exist
+ * @throws {Error} "User is not a member of this group" if the relationship
+ * doesn't exist
  *
  * @example
- * // Check if user is member before updating balance
- * const {userGroupRef, groupMemberRef} = await validateUserGroupMembership(
- *   "user123",
- *   "group456"
+ * // Basic usage
+ * const { userGroupRef, groupMemberRef } = await validateUserGroupMembership(
+ *   "user123", "group456"
  * );
- * // Now you can safely update both sides of the relationship
+ *
+ * // Use the references for further operations
+ * await userGroupRef.update({ balance: 100 });
+ * await groupMemberRef.update({ balance: 100 });
  */
 export async function validateUserGroupMembership(
   userId: string,
@@ -118,22 +120,17 @@ export async function validateUserGroupMembership(
   userGroupRef: admin.firestore.DocumentReference;
   groupMemberRef: admin.firestore.DocumentReference;
 }> {
-  // First validate that both entities exist
-  const userRef = await validateUserExists(userId);
-  const groupRef = await validateGroupExists(groupId);
+  const db = admin.firestore();
+  const userGroupRef = db.collection("users").doc(userId)
+    .collection("groups").doc(groupId);
+  const groupMemberRef = db.collection("groups").doc(groupId)
+    .collection("members").doc(userId);
 
-  // Get references to both sides of the relationship
-  const userGroupRef = userRef.collection("groups").doc(groupId);
-  const groupMemberRef = groupRef.collection("members").doc(userId);
-
-  // Check both sides of the bidirectional relationship
-  // This ensures data consistency and catches any orphaned records
   const [userGroupDoc, groupMemberDoc] = await Promise.all([
     userGroupRef.get(),
     groupMemberRef.get(),
   ]);
 
-  // If either side is missing, the relationship is invalid
   if (!userGroupDoc.exists || !groupMemberDoc.exists) {
     throw new Error("User is not a member of this group");
   }
@@ -142,31 +139,32 @@ export async function validateUserGroupMembership(
 }
 
 /**
- * Validates that a user is NOT already a member of a group
+ * Validates that a user is NOT a member of a specific group
  *
- * This function is the opposite of validateUserGroupMembership.
- * It's used when adding a user to a group to prevent duplicate memberships.
- *
- * The function validates that both entities exist, then checks that
- * neither side of the relationship exists yet.
+ * This function is used when adding a new user to a group to ensure
+ * they aren't already a member. It performs the same comprehensive
+ * check as validateUserGroupMembership but expects the relationship
+ * to NOT exist.
  *
  * @param {string} userId - The user ID
  * @param {string} groupId - The group ID
  * @return {Promise<{userGroupRef: admin.firestore.DocumentReference,
  * groupMemberRef: admin.firestore.DocumentReference}>}
- *         Document references for creating the new relationship
- * @throws {Error} "User not found" if user doesn't exist
- * @throws {Error} "Group not found" if group doesn't exist
- * @throws {Error} "User is already a member of this group"
- * if membership already exists
+ * Document references for both sides of the relationship
+ * @throws {Error} "User not found" if the user doesn't exist
+ * @throws {Error} "Group not found" if the group doesn't exist
+ * @throws {Error} "User is already a member of this group" if the relationship
+ * already exists
  *
  * @example
- * // Check before adding user to group
- * const {userGroupRef, groupMemberRef} = await validateUserNotInGroup(
- *   "user123",
- *   "group456"
+ * // Before adding a user to a group
+ * const { userGroupRef, groupMemberRef } = await validateUserNotInGroup(
+ *   "user123", "group456"
  * );
- * // Now you can safely create the membership on both sides
+ *
+ * // Now safe to add the user
+ * await userGroupRef.set({ userId, groupId, balance: 0 });
+ * await groupMemberRef.set({ userId, groupId, balance: 0 });
  */
 export async function validateUserNotInGroup(
   userId: string,
@@ -175,21 +173,17 @@ export async function validateUserNotInGroup(
   userGroupRef: admin.firestore.DocumentReference;
   groupMemberRef: admin.firestore.DocumentReference;
 }> {
-  // First validate that both entities exist
-  const userRef = await validateUserExists(userId);
-  const groupRef = await validateGroupExists(groupId);
+  const db = admin.firestore();
+  const userGroupRef = db.collection("users").doc(userId)
+    .collection("groups").doc(groupId);
+  const groupMemberRef = db.collection("groups").doc(groupId)
+    .collection("members").doc(userId);
 
-  // Get references to both sides of the relationship
-  const userGroupRef = userRef.collection("groups").doc(groupId);
-  const groupMemberRef = groupRef.collection("members").doc(userId);
-
-  // Check if the relationship already exists on either side
   const [userGroupDoc, groupMemberDoc] = await Promise.all([
     userGroupRef.get(),
     groupMemberRef.get(),
   ]);
 
-  // If either side exists, the user is already a member
   if (userGroupDoc.exists || groupMemberDoc.exists) {
     throw new Error("User is already a member of this group");
   }
@@ -198,38 +192,41 @@ export async function validateUserNotInGroup(
 }
 
 /**
- * Validates balance update business rules
+ * Validates that a group has exactly one admin
  *
- * This function validates the business logic for updating a user's balance:
- * - New balance cannot be negative
- * - User cannot withdraw more than their current balance
- * - The resulting kitty balance cannot be negative
+ * This function ensures that the admin flag logic is maintained:
+ * - Only one admin per group
+ * - Every group must have an admin
  *
- * @param {number} newBalance - The new balance amount
- * @param {number} currentBalance - The user's current balance
- * @param {number} currentKittyBalance - The group's current kitty balance
- * @throws {Error} Various validation errors for business rule violations
+ * @param {string} groupId - The group ID
+ * @param {boolean} isAdmin - Whether the user being added should be admin
+ * @throws {Error} "Group already has an admin" if trying to add a second admin
+ * @throws {Error} "Group must have an admin" if removing the only admin
+ *
+ * @example
+ * // When adding a user as admin
+ * await validateSingleAdmin("group456", true);
+ *
+ * // When adding a user as non-admin
+ * await validateSingleAdmin("group456", false);
  */
-export function validateBalanceUpdate(
-  newBalance: number,
-  currentBalance: number,
-  currentKittyBalance: number
-): void {
-  // Validate that balance is not negative
-  if (newBalance < 0) {
-    throw new Error("Balance cannot be less than 0");
+export async function validateSingleAdmin(
+  groupId: string,
+  isAdmin: boolean
+): Promise<void> {
+  const db = admin.firestore();
+  const groupRef = db.collection("groups").doc(groupId);
+  const membersSnapshot = await groupRef.collection("members").get();
+
+  const adminMembers = membersSnapshot.docs.filter(
+    (doc) => doc.data().isAdmin === true
+  );
+
+  if (isAdmin && adminMembers.length > 0) {
+    throw new Error("Group already has an admin");
   }
 
-  const balanceDifference = newBalance - currentBalance;
-
-  // Validate withdrawal doesn't exceed current balance
-  if (balanceDifference < 0 && Math.abs(balanceDifference) > currentBalance) {
-    throw new Error("Cannot withdraw more than current balance");
-  }
-
-  // Validate the resulting kitty balance won't be negative
-  const newKittyBalance = currentKittyBalance + balanceDifference;
-  if (newKittyBalance < 0) {
-    throw new Error("Insufficient funds in kitty");
+  if (!isAdmin && adminMembers.length === 0) {
+    throw new Error("Group must have an admin");
   }
 }

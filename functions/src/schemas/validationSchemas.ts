@@ -76,12 +76,117 @@ export const addUserToGroupSchema = Joi.object({
       "string.max": "User ID cannot exceed 100 characters",
       "any.required": "User ID is required",
     }),
+  isAdmin: Joi.boolean()
+    .optional()
+    .messages({
+      "boolean.base": "isAdmin must be a boolean value",
+    }),
 });
 
 /**
- * Transaction creation schema
+ * Bucket purchase schema
  */
-export const createTransactionSchema = Joi.object({
+export const purchaseBucketsSchema = Joi.object({
+  userId: Joi.string()
+    .min(1)
+    .max(100)
+    .trim()
+    .required()
+    .messages({
+      "string.empty": "User ID cannot be empty",
+      "string.min": "User ID must be at least 1 character",
+      "string.max": "User ID cannot exceed 100 characters",
+      "any.required": "User ID is required",
+    }),
+  bucketCount: Joi.number()
+    .integer()
+    .min(1)
+    .max(100)
+    .required()
+    .messages({
+      "number.base": "Bucket count must be a number",
+      "number.integer": "Bucket count must be a whole number",
+      "number.min": "Bucket count must be at least 1",
+      "number.max": "Bucket count cannot exceed 100",
+      "any.required": "Bucket count is required",
+    }),
+  unitsPerBucket: Joi.number()
+    .integer()
+    .min(1)
+    .max(1000)
+    .required()
+    .messages({
+      "number.base": "Units per bucket must be a number",
+      "number.integer": "Units per bucket must be a whole number",
+      "number.min": "Units per bucket must be at least 1",
+      "number.max": "Units per bucket cannot exceed 1000",
+      "any.required": "Units per bucket is required",
+    }),
+
+});
+
+/**
+ * Consumption recording schema
+ */
+export const recordConsumptionSchema = Joi.object({
+  userId: Joi.string()
+    .min(1)
+    .max(100)
+    .trim()
+    .required()
+    .messages({
+      "string.empty": "User ID cannot be empty",
+      "string.min": "User ID must be at least 1 character",
+      "string.max": "User ID cannot exceed 100 characters",
+      "any.required": "User ID is required",
+    }),
+  units: Joi.number()
+    .integer()
+    .min(1)
+    .max(100)
+    .required()
+    .messages({
+      "number.base": "Units must be a number",
+      "number.integer": "Units must be a whole number",
+      "number.min": "Units must be at least 1",
+      "number.max": "Units cannot exceed 100",
+      "any.required": "Units is required",
+    }),
+});
+
+/**
+ * Update user balance schema
+ */
+export const updateUserBalanceSchema = Joi.object({
+  amount: Joi.number()
+    .precision(2)
+    .min(-10000)
+    .max(10000)
+    .required()
+    .messages({
+      "number.base": "Amount must be a number",
+      "number.precision": "Amount can have up to 2 decimal places",
+      "number.min": "Amount cannot be less than -10000",
+      "number.max": "Amount cannot exceed 10000",
+      "any.required": "Amount is required",
+    }),
+  adminUserId: Joi.string()
+    .min(1)
+    .max(100)
+    .trim()
+    .required()
+    .messages({
+      "string.empty": "Admin user ID cannot be empty",
+      "string.min": "Admin user ID must be at least 1 character",
+      "string.max": "Admin user ID cannot exceed 100 characters",
+      "any.required": "Admin user ID is required",
+    }),
+});
+
+/**
+ * Create kitty transaction schema
+ */
+export const createKittyTransactionSchema = Joi.object({
   userId: Joi.string()
     .min(1)
     .max(100)
@@ -95,14 +200,14 @@ export const createTransactionSchema = Joi.object({
     }),
   amount: Joi.number()
     .precision(2)
-    .min(-1000000)
-    .max(1000000)
+    .min(0.01)
+    .max(10000)
     .required()
     .messages({
       "number.base": "Amount must be a number",
-      "number.min": "Amount cannot be less than -1,000,000",
-      "number.max": "Amount cannot exceed 1,000,000",
       "number.precision": "Amount can have up to 2 decimal places",
+      "number.min": "Amount must be greater than 0",
+      "number.max": "Amount cannot exceed 10000",
       "any.required": "Amount is required",
     }),
   comment: Joi.string()
@@ -133,6 +238,34 @@ export const groupIdParamSchema = Joi.object({
 });
 
 export const userIdParamSchema = Joi.object({
+  userId: Joi.string()
+    .min(1)
+    .max(100)
+    .trim()
+    .required()
+    .messages({
+      "string.empty": "User ID cannot be empty",
+      "string.min": "User ID must be at least 1 character",
+      "string.max": "User ID cannot exceed 100 characters",
+      "any.required": "User ID is required",
+    }),
+});
+
+/**
+ * Combined path parameter schema for group and user IDs
+ */
+export const groupAndUserIdParamSchema = Joi.object({
+  groupId: Joi.string()
+    .min(1)
+    .max(100)
+    .trim()
+    .required()
+    .messages({
+      "string.empty": "Group ID cannot be empty",
+      "string.min": "Group ID must be at least 1 character",
+      "string.max": "Group ID cannot exceed 100 characters",
+      "any.required": "Group ID is required",
+    }),
   userId: Joi.string()
     .min(1)
     .max(100)
@@ -180,24 +313,23 @@ export const customValidations = {
   },
 
   /**
-   * Validates that a number is a reasonable currency amount
+   * Validates that a number is a reasonable quantity
    * @param {number} value - The number to validate
-   * @return {boolean} True if valid currency amount, false otherwise
+   * @return {boolean} True if valid quantity, false otherwise
    */
-  isValidCurrencyAmount: (value: number): boolean => {
+  isValidQuantity: (value: number): boolean => {
     // Check if it's a finite number
     if (!Number.isFinite(value)) {
       return false;
     }
 
     // Check if it's within reasonable bounds
-    if (value < -1000000 || value > 1000000) {
+    if (value < 1 || value > 1000) {
       return false;
     }
 
-    // Check if it has reasonable decimal places (max 2)
-    const decimalPlaces = value.toString().split(".")[1]?.length || 0;
-    if (decimalPlaces > 2) {
+    // Check if it's an integer
+    if (!Number.isInteger(value)) {
       return false;
     }
 
@@ -222,17 +354,28 @@ export const enhancedCreateUserSchema = createUserSchema.keys({
   }),
 });
 
-export const enhancedCreateTransactionSchema = createTransactionSchema.keys({
-  amount: createTransactionSchema.extract("amount").custom(
+export const enhancedPurchaseBucketsSchema = purchaseBucketsSchema.keys({
+  bucketCount: purchaseBucketsSchema.extract("bucketCount").custom(
     (value: number, helpers: Joi.CustomHelpers) => {
-      if (!customValidations.isValidCurrencyAmount(value)) {
+      if (!customValidations.isValidQuantity(value)) {
         return helpers.error("any.invalid");
       }
       return value;
     },
-    "valid-currency-amount"
+    "valid-quantity"
   ).messages({
-    "any.invalid": "Amount is not a valid currency value",
+    "any.invalid": "Bucket count is not a valid quantity",
+  }),
+  unitsPerBucket: purchaseBucketsSchema.extract("unitsPerBucket").custom(
+    (value: number, helpers: Joi.CustomHelpers) => {
+      if (!customValidations.isValidQuantity(value)) {
+        return helpers.error("any.invalid");
+      }
+      return value;
+    },
+    "valid-quantity"
+  ).messages({
+    "any.invalid": "Units per bucket is not a valid quantity",
   }),
 });
 
