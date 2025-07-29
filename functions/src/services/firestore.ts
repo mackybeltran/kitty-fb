@@ -2,8 +2,8 @@ import * as admin from "firebase-admin";
 import {
   validateUserGroupMembership,
   validateUserNotInGroup,
-  validateBalanceUpdate,
-} from "./validators";
+  validateSingleAdmin,
+} from "../utils/validators";
 
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
@@ -41,7 +41,9 @@ if (!admin.apps.length) {
  * console.log("Created user with ID:", userId);
  */
 export async function createUser(
-  displayName: string, email: string): Promise<string> {
+  displayName: string,
+  email: string
+): Promise<string> {
   const db = admin.firestore();
   const userRef = db.collection("users").doc();
 
@@ -99,23 +101,44 @@ export async function createGroup(name: string): Promise<string> {
  *
  * @param {string} userId - The ID of the user to add
  * @param {string} groupId - The ID of the group to add the user to
+ * @param {boolean} isAdmin - Whether the user should be a group admin
  * @return {Promise<void>}
  *
  * @example
- * await addUserToGroup("user123", "group456");
- * // User is now a member of the group with balance 0
+ * await addUserToGroup("user123", "group456", true);
+ * console.log("User added to group as admin successfully");
  *
  * @throws {Error} Various validation errors from validators
  */
 export async function addUserToGroup(
   userId: string,
-  groupId: string
+  groupId: string,
+  isAdmin?: boolean
 ): Promise<void> {
   // Validate that user is not already a member and get document references
   const {userGroupRef, groupMemberRef} = await validateUserNotInGroup(
     userId,
     groupId
   );
+
+  const db = admin.firestore();
+  const groupRef = db.collection("groups").doc(groupId);
+  const membersSnapshot = await groupRef.collection("members").get();
+
+  // Determine if this user should be admin
+  let shouldBeAdmin = isAdmin;
+
+  if (membersSnapshot.empty) {
+    // First user in group - automatically becomes admin
+    shouldBeAdmin = true;
+  } else if (isAdmin === true) {
+    // User explicitly wants to be admin, but group already has members
+    // Validate that only one admin can exist per group
+    await validateSingleAdmin(groupId, true);
+  } else {
+    // Not first user and not explicitly requesting admin - must be false
+    shouldBeAdmin = false;
+  }
 
   // Create the bidirectional relationship atomically
   // This ensures data consistency -
@@ -124,115 +147,715 @@ export async function addUserToGroup(
     // Add group to user's groups subcollection
     userGroupRef.set({
       groupId,
-      balance: 0, // New members start with 0 balance
+      activeBucketId: null, // No active bucket initially
+      balance: 0, // Initial balance starts at 0 (no debt)
+      isAdmin: shouldBeAdmin, // Group admin flag
       joinedAt: new Date(),
     }),
     // Add user to group's members subcollection
     groupMemberRef.set({
       userId,
-      balance: 0, // New members start with 0 balance
+      activeBucketId: null, // No active bucket initially
+      balance: 0, // Initial balance starts at 0 (no debt)
+      isAdmin: shouldBeAdmin, // Group admin flag
       joinedAt: new Date(),
     }),
   ]);
 }
 
 /**
- * Creates a transaction in a group
+ * Purchases buckets for a user in a group
  *
- * This function creates a transaction that affects the kitty balance and
- * user balances. It maintains an audit trail of all financial changes
- * in the group with timestamps and optional comments.
- *
- * IMPORTANT: This function uses FieldValue.increment() which has known issues
- * in the Firestore emulator when combined with Promise.all(). The emulator
- * may return 500 errors for transactions, but this works correctly in
- * production.
- *
- * For emulator testing, consider temporarily replacing:
- *   kittyBalance: admin.firestore.FieldValue.increment(amount)
- * with:
- *   kittyBalance: currentKittyBalance + amount
+ * This function allows users to purchase multiple buckets of the same size.
+ * Each bucket is tracked individually with its own remaining units.
+ * The first bucket becomes the user's active bucket.
  *
  * @param {string} groupId - The ID of the group
- * @param {string} userId - The ID of the user making the transaction
- * @param {number} amount - The transaction amount (positive for contributions,
- * negative for withdrawals)
- * @param {string} comment - Optional comment explaining the transaction
- * @return {Promise<void>}
+ * @param {string} userId - The ID of the user purchasing buckets
+ * @param {number} bucketCount - Number of buckets to purchase
+ * @param {number} unitsPerBucket - Units in each bucket
+ * @return {Promise<string[]>} Array of bucket IDs created
  *
  * @example
- * // User contributes 50 to the group
- * await createTransaction("group123", "user456", 50, "Weekly contribution");
- *
- * // User withdraws 20 from the group
- * await createTransaction("group123", "user456", -20, "Lunch expense");
+ * const bucketIds = await purchaseBuckets("group123", "user456", 5, 8);
+ * console.log("Purchased 5 buckets of 8 units each:", bucketIds);
  *
  * @throws {Error} Various validation errors from validators
  */
-export async function createTransaction(
+export async function purchaseBuckets(
+  groupId: string,
+  userId: string,
+  bucketCount: number,
+  unitsPerBucket: number
+): Promise<string[]> {
+  // Validate that user is a member of the group
+  await validateUserGroupMembership(userId, groupId);
+
+  const db = admin.firestore();
+  const groupRef = db.collection("groups").doc(groupId);
+  const userGroupRef = db.collection("users").doc(userId)
+    .collection("groups").doc(groupId);
+  const groupMemberRef = groupRef.collection("members").doc(userId);
+
+  // Get current user membership data
+  const [userGroupDoc] = await Promise.all([
+    userGroupRef.get(),
+    groupMemberRef.get(),
+  ]);
+
+  const userGroupData = userGroupDoc.data();
+
+  // Create bucket documents
+  const bucketIds: string[] = [];
+  const bucketPromises: Promise<any>[] = [];
+
+  for (let i = 0; i < bucketCount; i++) {
+    const bucketRef = groupRef.collection("buckets").doc();
+    bucketIds.push(bucketRef.id);
+
+    const bucketData = {
+      userId,
+      unitsInBucket: unitsPerBucket,
+      remainingUnits: unitsPerBucket,
+      purchasedAt: new Date(),
+      status: i === 0 ? "active" : "active", // All buckets start as active
+      purchaseBatchId: `batch_${Date.now()}_${userId}`,
+    };
+
+    bucketPromises.push(bucketRef.set(bucketData));
+  }
+
+  // Set the first bucket as the active bucket if user has no active bucket
+  const currentActiveBucketId = userGroupData?.activeBucketId;
+  const newActiveBucketId = currentActiveBucketId || bucketIds[0];
+
+  // Update user membership with new active bucket
+  const updatePromises = [
+    userGroupRef.update({
+      activeBucketId: newActiveBucketId,
+      updatedAt: new Date(),
+    }),
+    groupMemberRef.update({
+      activeBucketId: newActiveBucketId,
+      updatedAt: new Date(),
+    }),
+  ];
+
+  // Execute all operations atomically
+  await Promise.all([...bucketPromises, ...updatePromises]);
+
+  return bucketIds;
+}
+
+/**
+ * Updates a user's balance in a group
+ *
+ * This function allows admins to add debt (negative amount) or clear debt
+ * (positive amount) for a user in a group. The balance can only be negative
+ * (representing debt).
+ *
+ * @param {string} groupId - The ID of the group
+ * @param {string} userId - The ID of the user whose balance to update
+ * @param {number} amount - Amount to add to balance (negative for debt,
+ * positive for payment)
+ * @param {string} adminUserId - The ID of the admin making the change
+ * @return {Promise<void>}
+ *
+ * @example
+ * // Add $20 debt
+ * await updateUserBalance("group123", "user456", -20, "admin789");
+ *
+ * // Clear $15 debt
+ * await updateUserBalance("group123", "user456", 15, "admin789");
+ *
+ * @throws {Error} Various validation errors from validators
+ */
+export async function updateUserBalance(
   groupId: string,
   userId: string,
   amount: number,
-  comment?: string
+  adminUserId: string
 ): Promise<void> {
-  // Validate that user is a member of the group and get document references
-  const {userGroupRef, groupMemberRef} = await validateUserGroupMembership(
-    userId,
-    groupId
-  );
-  const groupRef = await admin.firestore()
-    .collection("groups")
-    .doc(groupId);
+  // Validate that user is a member of the group
+  await validateUserGroupMembership(userId, groupId);
 
-  // Get current balances
-  const [userGroupDoc, groupDoc] = await Promise.all([
+  // Validate that admin is a member and is admin
+  await validateUserGroupMembership(adminUserId, groupId);
+
+  const db = admin.firestore();
+  const userGroupRef = db.collection("users").doc(userId)
+    .collection("groups").doc(groupId);
+  const groupMemberRef = db.collection("groups").doc(groupId)
+    .collection("members").doc(userId);
+  const adminGroupRef = db.collection("users").doc(adminUserId)
+    .collection("groups").doc(groupId);
+
+  // Get current data
+  const [userGroupDoc, adminGroupDoc] = await Promise.all([
     userGroupRef.get(),
-    groupRef.get(),
+    adminGroupRef.get(),
   ]);
 
-  const currentBalance = userGroupDoc.data()?.balance || 0;
-  const currentKittyBalance = groupDoc.data()?.kittyBalance || 0;
+  const userGroupData = userGroupDoc.data();
+  const adminGroupData = adminGroupDoc.data();
+
+  // Validate admin permissions
+  if (!adminGroupData?.isAdmin) {
+    throw new Error("Only group admins can update user balances");
+  }
+
+  // Validate amount is not zero
+  if (amount === 0) {
+    throw new Error("Amount cannot be zero");
+  }
+
+  const currentBalance = userGroupData?.balance || 0;
   const newBalance = currentBalance + amount;
 
-  // Validate business rules for the transaction
-  validateBalanceUpdate(newBalance, currentBalance, currentKittyBalance);
+  // Validate that balance doesn't become positive (users can only have debt)
+  if (newBalance > 0) {
+    throw new Error(
+      "User balance cannot be positive. Maximum payment allowed: " +
+      Math.abs(currentBalance)
+    );
+  }
 
-  // Create transaction record
-  const transactionRef = groupRef.collection("transactions").doc();
-  const transactionData = {
-    userId,
-    amount,
-    previousBalance: currentBalance,
-    newBalance,
-    comment: comment || "",
-    timestamp: new Date(),
-  };
-
-  // Update all locations atomically:
-  // 1. User's balance in the group
-  // 2. Group's member balance
-  // 3. Group's total kitty balance
-  // 4. Transaction log
+  // Update user balance in both locations
   await Promise.all([
-    // Update user's balance in the group
     userGroupRef.update({
       balance: newBalance,
       updatedAt: new Date(),
     }),
-    // Update group's member balance
     groupMemberRef.update({
       balance: newBalance,
       updatedAt: new Date(),
     }),
-    // Update group's total kitty balance
-    // NOTE: FieldValue.increment() has known issues in the Firestore emulator
-    // when used with Promise.all(). This works fine in production but may
-    // cause 500 errors in the emulator. For emulator testing, consider using
-    // direct calculation: kittyBalance: currentKittyBalance + amount
+  ]);
+}
+
+/**
+ * Records consumption of units from a user's active bucket
+ *
+ * This function tracks when a user takes units from their active bucket.
+ * If the active bucket runs out,
+ * it automatically moves to the next available bucket.
+ *
+ * @param {string} groupId - The ID of the group
+ * @param {string} userId - The ID of the user consuming units
+ * @param {number} units - Number of units to consume
+ * @return {Promise<void>}
+ *
+ * @example
+ * await recordConsumption("group123", "user456", 2);
+ * console.log("User consumed 2 units from their active bucket");
+ *
+ * @throws {Error} Various validation errors from validators
+ */
+export async function recordConsumption(
+  groupId: string,
+  userId: string,
+  units: number
+): Promise<void> {
+  // Validate that user is a member of the group
+  await validateUserGroupMembership(userId, groupId);
+
+  const db = admin.firestore();
+  const groupRef = db.collection("groups").doc(groupId);
+  const userGroupRef = db.collection("users").doc(userId)
+    .collection("groups").doc(groupId);
+  const groupMemberRef = groupRef.collection("members").doc(userId);
+
+  // Get current user membership data
+  const [userGroupDoc] = await Promise.all([
+    userGroupRef.get(),
+    groupMemberRef.get(),
+  ]);
+
+  const userGroupData = userGroupDoc.data();
+  const currentActiveBucketId = userGroupData?.activeBucketId;
+
+  if (!currentActiveBucketId) {
+    throw new Error("User has no active bucket");
+  }
+
+  // Get the active bucket
+  const activeBucketRef = groupRef
+    .collection("buckets")
+    .doc(currentActiveBucketId);
+  const activeBucketDoc = await activeBucketRef.get();
+
+  if (!activeBucketDoc.exists) {
+    throw new Error("Active bucket not found");
+  }
+
+  const activeBucketData = activeBucketDoc.data();
+  const currentRemainingUnits = activeBucketData?.remainingUnits || 0;
+
+  if (currentRemainingUnits < units) {
+    throw new Error(
+      `Insufficient units in active bucket.
+      Available: ${currentRemainingUnits}, requested: ${units}`
+    );
+  }
+
+  // Calculate new remaining units
+  const newRemainingUnits = currentRemainingUnits - units;
+
+  // Create consumption record
+  const consumptionRef = groupRef.collection("consumption").doc();
+  const consumptionData = {
+    userId,
+    units,
+    consumedAt: new Date(),
+    bucketId: currentActiveBucketId,
+  };
+
+  // Update bucket and create consumption record
+  const updatePromises: Promise<any>[] = [
+    consumptionRef.set(consumptionData),
+  ];
+
+  // If bucket is now empty, mark it as completed and find next bucket
+  if (newRemainingUnits === 0) {
+    // Mark current bucket as completed
+    updatePromises.push(
+      activeBucketRef.update({
+        remainingUnits: 0,
+        status: "completed",
+        updatedAt: new Date(),
+      })
+    );
+
+    // Find next available bucket
+    const bucketsSnapshot = await groupRef
+      .collection("buckets")
+      .where("userId", "==", userId)
+      .where("status", "==", "active")
+      .orderBy("purchasedAt", "asc")
+      .get();
+
+    let nextActiveBucketId = null;
+    for (const bucketDoc of bucketsSnapshot.docs) {
+      const bucketData = bucketDoc.data();
+      if (
+        bucketDoc.id !== currentActiveBucketId &&
+        bucketData.remainingUnits > 0
+      ) {
+        nextActiveBucketId = bucketDoc.id;
+        break;
+      }
+    }
+
+    // Update user's active bucket
+    if (nextActiveBucketId) {
+      updatePromises.push(
+        userGroupRef.update({
+          activeBucketId: nextActiveBucketId,
+          updatedAt: new Date(),
+        }),
+        groupMemberRef.update({
+          activeBucketId: nextActiveBucketId,
+          updatedAt: new Date(),
+        })
+      );
+    } else {
+      // No more buckets available
+      updatePromises.push(
+        userGroupRef.update({
+          activeBucketId: null,
+          updatedAt: new Date(),
+        }),
+        groupMemberRef.update({
+          activeBucketId: null,
+          updatedAt: new Date(),
+        })
+      );
+    }
+  } else {
+    // Just update the remaining units
+    updatePromises.push(
+      activeBucketRef.update({
+        remainingUnits: newRemainingUnits,
+        updatedAt: new Date(),
+      })
+    );
+  }
+
+  // Execute all operations atomically
+  await Promise.all(updatePromises);
+}
+
+/**
+ * Gets detailed information about a group including members
+ * and bucket inventory
+ *
+ * @param {string} groupId - The ID of the group to get details for
+ * @return {Promise<Object>} Group details including kitty balance and members
+ *
+ * @example
+ * const groupDetails = await getGroupDetails("group123");
+ * console.log("Group kitty balance:", groupDetails.kittyBalance);
+ * console.log("Total members:", groupDetails.memberCount);
+ */
+export async function getGroupDetails(groupId: string): Promise<any> {
+  const db = admin.firestore();
+  const groupRef = db.collection("groups").doc(groupId);
+
+  // Get group data
+  const groupDoc = await groupRef.get();
+  if (!groupDoc.exists) {
+    throw new Error("Group not found");
+  }
+
+  const groupData = groupDoc.data();
+  const kittyBalance = groupData?.kittyBalance || 0;
+
+  // Get all members
+  const membersSnapshot = await groupRef.collection("members").get();
+  const members: any[] = [];
+
+  membersSnapshot.forEach((doc) => {
+    const memberData = doc.data();
+    const member = {
+      userId: doc.id,
+      activeBucketId: memberData?.activeBucketId || null,
+      balance: memberData?.balance || 0,
+      joinedAt: memberData?.joinedAt,
+      isAdmin: memberData?.isAdmin || false,
+    };
+    members.push(member);
+  });
+
+  // Get bucket inventory
+  const bucketsSnapshot = await groupRef.collection("buckets").get();
+  const buckets: any[] = [];
+
+  bucketsSnapshot.forEach((doc) => {
+    const bucketData = doc.data();
+    const bucket = {
+      bucketId: doc.id,
+      userId: bucketData?.userId,
+      unitsInBucket: bucketData?.unitsInBucket || 0,
+      remainingUnits: bucketData?.remainingUnits || 0,
+      status: bucketData?.status || "active",
+      purchasedAt: bucketData?.purchasedAt,
+      purchaseBatchId: bucketData?.purchaseBatchId,
+    };
+    buckets.push(bucket);
+  });
+
+  return {
+    groupId,
+    name: groupData?.name,
+    kittyBalance,
+    memberCount: members.length,
+    members,
+    buckets,
+    createdAt: groupData?.createdAt,
+    updatedAt: groupData?.updatedAt,
+  };
+}
+
+/**
+ * Gets all members of a group with their bucket information
+ *
+ * @param {string} groupId - The ID of the group to get members for
+ * @return {Promise<Array>} Array of group members with their details
+ *
+ * @example
+ * const members = await getGroupMembers("group123");
+ * members.forEach(member => {
+ *   console.log(`${member.userId}: active bucket ${member.activeBucketId}`);
+ * });
+ */
+export async function getGroupMembers(groupId: string): Promise<any[]> {
+  const db = admin.firestore();
+  const groupRef = db.collection("groups").doc(groupId);
+
+  // Verify group exists
+  const groupDoc = await groupRef.get();
+  if (!groupDoc.exists) {
+    throw new Error("Group not found");
+  }
+
+  // Get all members
+  const membersSnapshot = await groupRef.collection("members").get();
+  const members: any[] = [];
+
+  membersSnapshot.forEach((doc) => {
+    const memberData = doc.data();
+    const member = {
+      userId: doc.id,
+      activeBucketId: memberData?.activeBucketId || null,
+      balance: memberData?.balance || 0,
+      joinedAt: memberData?.joinedAt,
+      isAdmin: memberData?.isAdmin || false,
+    };
+    members.push(member);
+  });
+
+  return members;
+}
+
+/**
+ * Gets detailed information about a user including their groups
+ * and bucket status
+ *
+ * @param {string} userId - The ID of the user to get details for
+ * @return {Promise<Object>} User details including groups
+ * and bucket information
+ *
+ * @example
+ * const userDetails = await getUserDetails("user123");
+ * console.log("User groups:", userDetails.groups);
+ * console.log("Total groups:", userDetails.groupCount);
+ */
+export async function getUserDetails(userId: string): Promise<any> {
+  const db = admin.firestore();
+  const userRef = db.collection("users").doc(userId);
+
+  // Get user data
+  const userDoc = await userRef.get();
+  if (!userDoc.exists) {
+    throw new Error("User not found");
+  }
+
+  const userData = userDoc.data();
+
+  // Get all user's groups
+  const groupsSnapshot = await userRef.collection("groups").get();
+  const groups: any[] = [];
+
+  groupsSnapshot.forEach((doc) => {
+    const groupData = doc.data();
+    const group = {
+      groupId: doc.id,
+      activeBucketId: groupData?.activeBucketId || null,
+      balance: groupData?.balance || 0,
+      joinedAt: groupData?.joinedAt,
+      isAdmin: groupData?.isAdmin || false,
+    };
+    groups.push(group);
+  });
+
+  return {
+    userId,
+    displayName: userData?.displayName,
+    email: userData?.email,
+    groupCount: groups.length,
+    groups,
+    createdAt: userData?.createdAt,
+    updatedAt: userData?.updatedAt,
+  };
+}
+
+/**
+ * Gets all buckets for a user in a specific group
+ *
+ * @param {string} groupId - The ID of the group
+ * @param {string} userId - The ID of the user
+ * @return {Promise<Array>} Array of buckets for the user in the group
+ *
+ * @example
+ * const buckets = await getUserBuckets("group123", "user456");
+ * buckets.forEach(bucket => {
+ *   console.log(`Bucket ${bucket.bucketId}:
+ *   ${bucket.remainingUnits}/${bucket.unitsInBucket} units remaining`);
+ * });
+ */
+export async function getUserBuckets(
+  groupId: string,
+  userId: string
+): Promise<any[]> {
+  // Validate that user is a member of the group
+  await validateUserGroupMembership(userId, groupId);
+
+  const db = admin.firestore();
+  const groupRef = db.collection("groups").doc(groupId);
+
+  // Get all buckets for this user in this group
+  const bucketsSnapshot = await groupRef
+    .collection("buckets")
+    .where("userId", "==", userId)
+    .orderBy("purchasedAt", "asc")
+    .get();
+
+  const buckets: any[] = [];
+
+  bucketsSnapshot.forEach((doc) => {
+    const bucketData = doc.data();
+    const bucket = {
+      bucketId: doc.id,
+      unitsInBucket: bucketData?.unitsInBucket || 0,
+      remainingUnits: bucketData?.remainingUnits || 0,
+      status: bucketData?.status || "active",
+      purchasedAt: bucketData?.purchasedAt,
+      purchaseBatchId: bucketData?.purchaseBatchId,
+    };
+    buckets.push(bucket);
+  });
+
+  return buckets;
+}
+
+/**
+ * Gets consumption history for a group
+ *
+ * @param {string} groupId - The ID of the group
+ * @return {Promise<Array>} Array of consumption records
+ *
+ * @example
+ * const consumption = await getGroupConsumption("group123");
+ * consumption.forEach(record => {
+ *   console.log(`${record.userId} consumed ${record.units}
+ *   units at ${record.consumedAt}`);
+ * });
+ */
+export async function getGroupConsumption(groupId: string): Promise<any[]> {
+  const db = admin.firestore();
+  const groupRef = db.collection("groups").doc(groupId);
+
+  // Verify group exists
+  const groupDoc = await groupRef.get();
+  if (!groupDoc.exists) {
+    throw new Error("Group not found");
+  }
+
+  // Get all consumption records
+  const consumptionSnapshot = await groupRef
+    .collection("consumption")
+    .orderBy("consumedAt", "desc")
+    .get();
+
+  const consumption: any[] = [];
+
+  consumptionSnapshot.forEach((doc) => {
+    const consumptionData = doc.data();
+    const record = {
+      consumptionId: doc.id,
+      userId: consumptionData?.userId,
+      units: consumptionData?.units || 0,
+      consumedAt: consumptionData?.consumedAt,
+      bucketId: consumptionData?.bucketId,
+    };
+    consumption.push(record);
+  });
+
+  return consumption;
+}
+
+/**
+ * Creates a transaction to add money to the group's kitty balance
+ *
+ * This function allows users to contribute money to the group's kitty.
+ * It updates the group's kitty balance and creates a transaction record
+ * for audit purposes.
+ *
+ * @param {string} groupId - The ID of the group
+ * @param {string} userId - The ID of the user making the contribution
+ * @param {number} amount - Amount to add to kitty balance (must be positive)
+ * @param {string} comment - Optional description of the transaction
+ * @return {Promise<string>} The ID of the created transaction
+ *
+ * @example
+ * const transactionId = await createKittyTransaction(
+ *   "group123", "user456", 50, "Weekly contribution"
+ * );
+ * console.log("Created transaction:", transactionId);
+ *
+ * @throws {Error} Various validation errors from validators
+ */
+export async function createKittyTransaction(
+  groupId: string,
+  userId: string,
+  amount: number,
+  comment?: string
+): Promise<string> {
+  // Validate that user is a member of the group
+  await validateUserGroupMembership(userId, groupId);
+
+  if (amount <= 0) {
+    throw new Error("Transaction amount must be positive");
+  }
+
+  const db = admin.firestore();
+  const groupRef = db.collection("groups").doc(groupId);
+
+  // Get current group data
+  const groupDoc = await groupRef.get();
+  if (!groupDoc.exists) {
+    throw new Error("Group not found");
+  }
+
+  const groupData = groupDoc.data();
+  const currentKittyBalance = groupData?.kittyBalance || 0;
+  const newKittyBalance = currentKittyBalance + amount;
+
+  // Create transaction document
+  const transactionRef = groupRef.collection("transactions").doc();
+  const transactionData = {
+    userId,
+    amount,
+    type: "contribution",
+    comment: comment || "",
+    createdAt: new Date(),
+  };
+
+  // Update group kitty balance and create transaction record atomically
+  await Promise.all([
     groupRef.update({
-      kittyBalance: admin.firestore.FieldValue.increment(amount),
+      kittyBalance: newKittyBalance,
+      updatedAt: new Date(),
     }),
-    // Log the transaction
     transactionRef.set(transactionData),
   ]);
+
+  return transactionRef.id;
+}
+
+/**
+ * Gets transaction history for a group
+ *
+ * This function retrieves all transactions for a group, allowing admins
+ * to see who has contributed to the kitty and when.
+ *
+ * @param {string} groupId - The ID of the group
+ * @return {Promise<any[]>} Array of transaction records
+ *
+ * @example
+ * const transactions = await getGroupTransactions("group123");
+ * console.log("Transaction count:", transactions.length);
+ */
+export async function getGroupTransactions(groupId: string): Promise<any[]> {
+  const db = admin.firestore();
+  const groupRef = db.collection("groups").doc(groupId);
+
+  // Verify group exists
+  const groupDoc = await groupRef.get();
+  if (!groupDoc.exists) {
+    throw new Error("Group not found");
+  }
+
+  // Get all transactions
+  const transactionsSnapshot = await groupRef
+    .collection("transactions")
+    .orderBy("createdAt", "desc")
+    .get();
+
+  const transactions: any[] = [];
+
+  transactionsSnapshot.forEach((doc) => {
+    const transactionData = doc.data();
+    const transaction = {
+      transactionId: doc.id,
+      userId: transactionData?.userId,
+      amount: transactionData?.amount || 0,
+      type: transactionData?.type || "contribution",
+      comment: transactionData?.comment || "",
+      createdAt: transactionData?.createdAt,
+    };
+    transactions.push(transaction);
+  });
+
+  return transactions;
 }
