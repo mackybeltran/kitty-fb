@@ -4,7 +4,7 @@ Complete API documentation for the Kitty FB Firebase Cloud Functions backend.
 
 ## Base URL
 
-- **Production**: `https://api-yqyq3bmp3a-uc.a.run.app`
+- **Production**: `https://your-project-id.cloudfunctions.net`
 - **Local Development**: `http://localhost:5001/{project-id}/us-central1/api`
 
 ## Authentication

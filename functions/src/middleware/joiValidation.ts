@@ -14,6 +14,9 @@ import {
   userIdParamSchema,
   groupAndUserIdParamSchema,
   groupAndRequestIdParamSchema,
+  generateQRCodeSchema,
+  processQRCodeSchema,
+  enhancedCreateJoinRequestSchema,
   createValidationMiddleware,
   createParamValidationMiddleware,
 } from "../schemas/validationSchemas";
@@ -62,12 +65,25 @@ export const validateCreateJoinRequest = createValidationMiddleware(
   createJoinRequestSchema
 );
 
+export const validateEnhancedCreateJoinRequest = createValidationMiddleware(
+  enhancedCreateJoinRequestSchema
+);
+
 export const validateApproveJoinRequest = createValidationMiddleware(
   approveJoinRequestSchema
 );
 
 export const validateDenyJoinRequest = createValidationMiddleware(
   denyJoinRequestSchema
+);
+
+// QR code validation
+export const validateGenerateQRCode = createValidationMiddleware(
+  generateQRCodeSchema
+);
+
+export const validateProcessQRCode = createValidationMiddleware(
+  processQRCodeSchema
 );
 
 // Path parameter validations
