@@ -1,4 +1,5 @@
 import * as admin from "firebase-admin";
+import * as QRCode from "qrcode";
 import {
   validateUserGroupMembership,
   validateUserNotInGroup,
@@ -1016,4 +1017,232 @@ export async function denyJoinRequest(
     processedAt: new Date(),
     reason: reason,
   });
+}
+
+/**
+ * Generates a QR code for a group
+ *
+ * This function creates a QR code that can be used for both onboarding
+ * and consumption tracking. The QR code contains group information
+ * and appropriate URLs for different platforms.
+ *
+ * @param {string} groupId - The ID of the group
+ * @param {string} type - The type of QR code (dual-purpose,
+ * onboarding, consumption)
+ * @param {number} size - The size of the QR code in pixels
+ * @param {boolean} includeLogo - Whether to include a logo in the QR code
+ * @return {Promise<{
+ *   qrCodeDataUrl: string,
+ *   qrCodeContent: string,
+ *   groupInfo: any
+ * }>}
+ *
+ * @example
+ * const { qrCodeDataUrl, qrCodeContent, groupInfo } = await generateQRCode(
+ *   "group123",
+ *   "dual-purpose",
+ *   300,
+ *   false
+ * );
+ *
+ * @throws {Error} If group doesn't exist
+ */
+export async function generateQRCode(
+  groupId: string,
+  type: "dual-purpose" | "onboarding" | "consumption" = "dual-purpose",
+  size = 300,
+  includeLogo = false
+): Promise<{
+  qrCodeDataUrl: string;
+  qrCodeContent: string;
+  groupInfo: any;
+}> {
+  // Validate group exists
+  const groupRef = await validateGroupExists(groupId);
+  const groupDoc = await groupRef.get();
+  const groupData = groupDoc.data();
+
+  if (!groupData) {
+    throw new Error("Group not found");
+  }
+
+  // Create QR code data structure
+  const qrData = {
+    type: type,
+    groupId: groupId,
+    version: "1.0",
+    timestamp: Date.now(),
+    urls: {
+      ios: "https://apps.apple.com/app/kitty-fb/id123456789", // Placeholder
+      android:
+        "https://play.google.com/store/apps/details?id=com.kittyfb.app", // Placeholder
+      web: `https://kitty-fb.web.app/group/${groupId}`,
+    },
+  };
+
+  const qrContent = JSON.stringify(qrData);
+
+  // Generate QR code as data URL
+  const qrCodeDataUrl = await QRCode.toDataURL(qrContent, {
+    width: size,
+    margin: 2,
+    color: {
+      dark: "#000000",
+      light: "#FFFFFF",
+    },
+    errorCorrectionLevel: "H", // High error correction for better scanning
+  });
+
+  return {
+    qrCodeDataUrl,
+    qrCodeContent: qrContent,
+    groupInfo: {
+      id: groupId,
+      name: groupData.name,
+      memberCount: groupData.memberCount || 0,
+      kittyBalance: groupData.kittyBalance || 0,
+    },
+  };
+}
+
+
+/**
+ * @typedef {Object} ProcessQRCodeResult
+ * @property {string} action - Action to take
+ * @property {string} groupId - The group ID
+ * @property {any} groupInfo - Group information
+ * @property {any} [userInfo] - Optional user info
+ */
+
+/**
+ * Processes a scanned QR code and determines the appropriate action
+ *
+ * This function analyzes the QR code data and user context to determine
+ * whether the user should be onboarded, join the group, or consume units.
+ *
+ * @param {string} qrData - The QR code data (JSON string)
+ * @param {any} userContext - User context information
+ * @return {Promise<ProcessQRCodeResult>}
+ *
+ * @example
+ * const result = await processQRCode(
+ *   '{"type":"dual-purpose","groupId":"group123"}',
+ *   { userId: "user123", platform: "ios" }
+ * );
+ *
+ * @throws {Error} If QR data is invalid or group doesn't exist
+ */
+export async function processQRCode(
+  qrData: string,
+  userContext: {
+    userId?: string;
+    platform: "ios" | "android" | "web";
+    appVersion?: string;
+    deviceId?: string;
+  }
+): Promise<{
+  action: string;
+  groupId: string;
+  groupInfo: any;
+  userInfo?: any;
+}> {
+  try {
+    // Parse QR code data
+    const parsedData = JSON.parse(qrData);
+
+    if (!parsedData.groupId) {
+      throw new Error("Invalid QR code: missing group ID");
+    }
+
+    const groupId = parsedData.groupId;
+
+    // Validate group exists
+    const groupRef = await validateGroupExists(groupId);
+    const groupDoc = await groupRef.get();
+    const groupData = groupDoc.data();
+
+    if (!groupData) {
+      throw new Error("Group not found");
+    }
+
+    // If no user ID provided, it's an onboarding flow
+    if (!userContext.userId) {
+      return {
+        action: "onboarding",
+        groupId: groupId,
+        groupInfo: {
+          id: groupId,
+          name: groupData.name,
+          memberCount: groupData.memberCount || 0,
+        },
+      };
+    }
+
+    // Check if user is a member of the group
+    try {
+      const {groupMemberRef} = await validateUserGroupMembership(
+        userContext.userId,
+        groupId
+      );
+      const memberData = (await groupMemberRef.get()).data();
+
+      if (memberData) {
+        // User is a member - check if they can consume
+        const userBuckets = await getUserBuckets(groupId, userContext.userId);
+        const activeBucket = userBuckets.find((bucket) =>
+          bucket.status === "active");
+
+        return {
+          action: "consumption",
+          groupId: groupId,
+          groupInfo: {
+            id: groupId,
+            name: groupData.name,
+            memberCount: groupData.memberCount || 0,
+          },
+          userInfo: {
+            isMember: true,
+            isAdmin: memberData.isAdmin || false,
+            activeBucketId: memberData.activeBucketId || null,
+            remainingUnits: activeBucket ? activeBucket.remainingUnits : 0,
+            hasActiveBucket: !!activeBucket,
+          },
+        };
+      }
+    } catch (error) {
+      // User is not a member - join request flow
+      return {
+        action: "join-request",
+        groupId: groupId,
+        groupInfo: {
+          id: groupId,
+          name: groupData.name,
+          memberCount: groupData.memberCount || 0,
+        },
+        userInfo: {
+          isMember: false,
+          isAdmin: false,
+          activeBucketId: null,
+          remainingUnits: 0,
+          hasActiveBucket: false,
+        },
+      };
+    }
+
+    // Fallback to onboarding
+    return {
+      action: "onboarding",
+      groupId: groupId,
+      groupInfo: {
+        id: groupId,
+        name: groupData.name,
+        memberCount: groupData.memberCount || 0,
+      },
+    };
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error("Invalid QR code format");
+    }
+    throw error;
+  }
 }

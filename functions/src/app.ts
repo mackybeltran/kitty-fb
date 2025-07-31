@@ -5,6 +5,7 @@ import {
   BucketController,
   BalanceController,
   TransactionController,
+  QRCodeController,
   DevController,
 } from "./controllers";
 import {errorHandler, asyncHandler} from "./middleware/errorHandler";
@@ -19,6 +20,8 @@ import {
   validateCreateJoinRequest,
   validateApproveJoinRequest,
   validateDenyJoinRequest,
+  validateGenerateQRCode,
+  validateProcessQRCode,
   validateGroupIdParam,
   validateUserIdParam,
   validateGroupAndUserIdParam,
@@ -150,6 +153,27 @@ app.get(
   "/users/:userId",
   validateUserIdParam,
   asyncHandler(UserController.getUserDetails)
+);
+
+// QR Code routes
+app.post(
+  "/groups/:groupId/qr-code",
+  validateGroupIdParam,
+  validateGenerateQRCode,
+  asyncHandler(QRCodeController.generateQRCode)
+);
+
+app.post(
+  "/groups/:groupId/qr-code/image",
+  validateGroupIdParam,
+  validateGenerateQRCode,
+  asyncHandler(QRCodeController.generateQRCodeImage)
+);
+
+app.post(
+  "/qr-code/process",
+  validateProcessQRCode,
+  asyncHandler(QRCodeController.processQRCode)
 );
 
 // Development utilities (only available in development)

@@ -13,7 +13,7 @@ This guide covers everything you need to know to build a frontend application (w
 ```typescript
 // API configuration
 const API_CONFIG = {
-  baseUrl: 'https://api-yqyq3bmp3a-uc.a.run.app', // Production
+  baseUrl: 'https://your-project-id.cloudfunctions.net', // Production
   // baseUrl: 'http://localhost:5001/{project-id}/us-central1/api', // Local
   timeout: 10000,
   headers: {
@@ -767,7 +767,7 @@ const getAPIConfig = () => {
   }
   
   return {
-    baseUrl: 'https://api-yqyq3bmp3a-uc.a.run.app',
+    baseUrl: 'https://your-project-id.cloudfunctions.net',
     timeout: 10000,
   };
 };
@@ -780,7 +780,7 @@ const getAPIConfig = () => {
 {
   "scripts": {
     "build:dev": "REACT_APP_API_URL=http://localhost:5001/{project-id}/us-central1/api npm run build",
-    "build:prod": "REACT_APP_API_URL=https://api-yqyq3bmp3a-uc.a.run.app npm run build"
+    "build:prod": "REACT_APP_API_URL=https://your-project-id.cloudfunctions.net npm run build"
   }
 }
 ```

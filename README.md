@@ -18,7 +18,7 @@ A Firebase Cloud Functions API for managing shared inventory in group spaces. Us
 
 3. **Test the API:**
    ```bash
-   curl -X GET https://your-function-url/dev/stats
+   curl -X GET https://your-project-id.cloudfunctions.net/dev/stats
    ```
 
 ## ✨ Features

@@ -493,6 +493,105 @@ export const createValidationMiddleware = (schema: Joi.ObjectSchema) => {
 };
 
 /**
+ * QR code generation schema
+ */
+export const generateQRCodeSchema = Joi.object({
+  type: Joi.string()
+    .valid("dual-purpose", "onboarding", "consumption")
+    .default("dual-purpose")
+    .messages({
+      "any.only": "Type must be dual-purpose, onboarding, or consumption",
+    }),
+  size: Joi.number()
+    .integer()
+    .min(100)
+    .max(1000)
+    .default(300)
+    .messages({
+      "number.base": "Size must be a number",
+      "number.integer": "Size must be an integer",
+      "number.min": "Size must be at least 100",
+      "number.max": "Size cannot exceed 1000",
+    }),
+  includeLogo: Joi.boolean()
+    .default(false)
+    .messages({
+      "boolean.base": "Include logo must be a boolean value",
+    }),
+});
+
+/**
+ * QR code processing schema
+ */
+export const processQRCodeSchema = Joi.object({
+  qrData: Joi.string()
+    .min(1)
+    .max(2000)
+    .trim()
+    .required()
+    .messages({
+      "string.empty": "QR data cannot be empty",
+      "string.min": "QR data must be at least 1 character",
+      "string.max": "QR data cannot exceed 2000 characters",
+      "any.required": "QR data is required",
+    }),
+  userContext: Joi.object({
+    userId: Joi.string()
+      .min(1)
+      .max(100)
+      .trim()
+      .optional()
+      .messages({
+        "string.min": "User ID must be at least 1 character",
+        "string.max": "User ID cannot exceed 100 characters",
+      }),
+    platform: Joi.string()
+      .valid("ios", "android", "web")
+      .required()
+      .messages({
+        "string.empty": "Platform cannot be empty",
+        "any.only": "Platform must be ios, android, or web",
+        "any.required": "Platform is required",
+      }),
+    appVersion: Joi.string()
+      .max(50)
+      .trim()
+      .optional()
+      .messages({
+        "string.max": "App version cannot exceed 50 characters",
+      }),
+    deviceId: Joi.string()
+      .max(100)
+      .trim()
+      .optional()
+      .messages({
+        "string.max": "Device ID cannot exceed 100 characters",
+      }),
+  }).required().messages({
+    "any.required": "User context is required",
+  }),
+});
+
+/**
+ * Enhanced join request schema with QR context
+ */
+export const enhancedCreateJoinRequestSchema = createJoinRequestSchema.keys({
+  source: Joi.string()
+    .valid("qr-code", "manual", "invite")
+    .default("manual")
+    .messages({
+      "any.only": "Source must be qr-code, manual, or invite",
+    }),
+  qrContext: Joi.object({
+    timestamp: Joi.number().optional(),
+    deviceInfo: Joi.object({
+      platform: Joi.string().valid("ios", "android", "web").optional(),
+      appVersion: Joi.string().optional(),
+    }).optional(),
+  }).optional(),
+});
+
+/**
  * Path parameter validation middleware factory
  * @param {Joi.ObjectSchema} schema - The Joi schema to validate against
  * @return {Function} Express middleware function

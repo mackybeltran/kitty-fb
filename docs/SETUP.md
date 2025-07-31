@@ -164,14 +164,14 @@ firebase deploy
 After deployment, you'll see output like:
 ```
 ✔  functions[api(us-central1)] Successful create operation.
-Function URL (api(us-central1)): https://api-xxxxx-uc.a.run.app
+Function URL (api(us-central1)): https://your-project-id.cloudfunctions.net
 ```
 
 ### 4. Test the API
 
 ```bash
 # Test the API is working
-curl -X GET https://your-function-url/dev/stats
+curl -X GET https://your-project-id.cloudfunctions.net/dev/stats
 ```
 
 ## Development Environment
