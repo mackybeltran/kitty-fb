@@ -230,3 +230,33 @@ export async function validateSingleAdmin(
     throw new Error("Group must have an admin");
   }
 }
+
+/**
+ * Validates that a user is a group admin
+ *
+ * This function ensures that a user is both a member of the group
+ * and has admin privileges. It's used for operations that require
+ * admin permissions like approving join requests or updating
+ * balances.
+ *
+ * @param {string} userId - The user ID to validate
+ * @param {string} groupId - The group ID to validate
+ * @throws {Error} "User is not a member of this group" if user is not a member
+ * @throws {Error} "Only group admins can perform this action" if user is
+ * not admin
+ *
+ * @example
+ * // Before approving a join request
+ * await validateUserIsGroupAdmin("admin123", "group456");
+ */
+export async function validateUserIsGroupAdmin(
+  userId: string,
+  groupId: string
+): Promise<void> {
+  const {groupMemberRef} = await validateUserGroupMembership(userId, groupId);
+  const memberData = (await groupMemberRef.get()).data();
+
+  if (!memberData?.isAdmin) {
+    throw new Error("Only group admins can perform this action");
+  }
+}

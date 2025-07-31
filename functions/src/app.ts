@@ -16,9 +16,13 @@ import {
   validateConsumption,
   validateUpdateBalance,
   validateKittyTransaction,
+  validateCreateJoinRequest,
+  validateApproveJoinRequest,
+  validateDenyJoinRequest,
   validateGroupIdParam,
   validateUserIdParam,
   validateGroupAndUserIdParam,
+  validateGroupAndRequestIdParam,
 } from "./middleware/joiValidation";
 
 const app = express();
@@ -43,6 +47,37 @@ app.post(
   "/groups/:groupId/members",
   validateGroupRoute,
   asyncHandler(GroupController.addUserToGroup)
+);
+
+// Handle creating a join request
+app.post(
+  "/groups/:groupId/join-requests",
+  validateGroupIdParam,
+  validateCreateJoinRequest,
+  asyncHandler(GroupController.createJoinRequest)
+);
+
+// Handle getting join requests for a group
+app.get(
+  "/groups/:groupId/join-requests",
+  validateGroupIdParam,
+  asyncHandler(GroupController.getJoinRequests)
+);
+
+// Handle approving a join request
+app.post(
+  "/groups/:groupId/join-requests/:requestId/approve",
+  validateGroupAndRequestIdParam,
+  validateApproveJoinRequest,
+  asyncHandler(GroupController.approveJoinRequest)
+);
+
+// Handle denying a join request
+app.post(
+  "/groups/:groupId/join-requests/:requestId/deny",
+  validateGroupAndRequestIdParam,
+  validateDenyJoinRequest,
+  asyncHandler(GroupController.denyJoinRequest)
 );
 
 // Handle purchasing buckets
@@ -117,29 +152,28 @@ app.get(
   asyncHandler(UserController.getUserDetails)
 );
 
-// DEVELOPMENT UTILITIES - WARNING: These endpoints modify database data
+// Development utilities (only available in development)
+if (
+  process.env.NODE_ENV === "development" ||
+  process.env.ENABLE_DEV_UTILITIES === "true"
+) {
+  // Check dev utilities status
+  app.get("/dev/status", asyncHandler(DevController.getStatus));
 
-// Handle checking if dev utilities are available
-app.get("/dev/status", asyncHandler(DevController.getStatus));
+  // Get database statistics
+  app.get("/dev/stats", asyncHandler(DevController.getStats));
 
-// Handle getting database statistics
-app.get("/dev/stats", asyncHandler(DevController.getStats));
+  // Wipe database
+  app.delete("/dev/wipe", asyncHandler(DevController.wipeDatabase));
 
-// Handle wiping the database
-app.delete("/dev/wipe", asyncHandler(DevController.wipeDatabase));
+  // Seed database
+  app.post("/dev/seed", asyncHandler(DevController.seedDatabase));
 
-// Handle seeding the database
-app.post("/dev/seed", asyncHandler(DevController.seedDatabase));
+  // Reset database (wipe + seed)
+  app.post("/dev/reset", asyncHandler(DevController.resetDatabase));
+}
 
-// Handle resetting the database
-app.post("/dev/reset", asyncHandler(DevController.resetDatabase));
-
-// Handle non-existing routes
-app.use((req, res) => {
-  res.status(404).json({error: "Route not found"});
-});
-
-// Error handling middleware (must be last)
+// Error handling middleware
 app.use(errorHandler);
 
-export default app;
+export {app};

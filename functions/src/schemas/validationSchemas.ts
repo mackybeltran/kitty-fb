@@ -280,6 +280,90 @@ export const groupAndUserIdParamSchema = Joi.object({
 });
 
 /**
+ * Schema for creating a join request
+ */
+export const createJoinRequestSchema = Joi.object({
+  userId: Joi.string()
+    .required()
+    .max(100)
+    .messages({
+      "any.required": "User ID is required",
+      "string.empty": "User ID cannot be empty",
+      "string.max": "User ID cannot exceed 100 characters",
+    }),
+  message: Joi.string()
+    .max(500)
+    .optional()
+    .messages({
+      "string.max": "Message cannot exceed 500 characters",
+    }),
+});
+
+/**
+ * Schema for approving a join request
+ */
+export const approveJoinRequestSchema = Joi.object({
+  adminUserId: Joi.string()
+    .required()
+    .max(100)
+    .messages({
+      "any.required": "Admin user ID is required",
+      "string.empty": "Admin user ID cannot be empty",
+      "string.max": "Admin user ID cannot exceed 100 characters",
+    }),
+  reason: Joi.string()
+    .max(500)
+    .optional()
+    .messages({
+      "string.max": "Reason cannot exceed 500 characters",
+    }),
+});
+
+/**
+ * Schema for denying a join request
+ */
+export const denyJoinRequestSchema = Joi.object({
+  adminUserId: Joi.string()
+    .required()
+    .max(100)
+    .messages({
+      "any.required": "Admin user ID is required",
+      "string.empty": "Admin user ID cannot be empty",
+      "string.max": "Admin user ID cannot exceed 100 characters",
+    }),
+  reason: Joi.string()
+    .required()
+    .max(500)
+    .messages({
+      "any.required": "Reason for denial is required",
+      "string.empty": "Reason for denial cannot be empty",
+      "string.max": "Reason cannot exceed 500 characters",
+    }),
+});
+
+/**
+ * Schema for group and request ID parameters
+ */
+export const groupAndRequestIdParamSchema = Joi.object({
+  groupId: Joi.string()
+    .required()
+    .max(100)
+    .messages({
+      "any.required": "Group ID is required",
+      "string.empty": "Group ID cannot be empty",
+      "string.max": "Group ID cannot exceed 100 characters",
+    }),
+  requestId: Joi.string()
+    .required()
+    .max(100)
+    .messages({
+      "any.required": "Request ID is required",
+      "string.empty": "Request ID cannot be empty",
+      "string.max": "Request ID cannot exceed 100 characters",
+    }),
+});
+
+/**
  * Custom validation functions
  */
 export const customValidations = {

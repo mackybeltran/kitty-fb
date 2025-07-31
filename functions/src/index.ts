@@ -13,6 +13,6 @@ import * as admin from "firebase-admin";
 // Initialize Firebase Admin first
 admin.initializeApp();
 
-import app from "./app";
+import {app} from "./app";
 
 export const api = functions.https.onRequest(app);

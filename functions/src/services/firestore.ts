@@ -3,6 +3,9 @@ import {
   validateUserGroupMembership,
   validateUserNotInGroup,
   validateSingleAdmin,
+  validateUserIsGroupAdmin,
+  validateGroupExists,
+  validateUserExists,
 } from "../utils/validators";
 
 // Initialize Firebase Admin if not already initialized
@@ -280,29 +283,17 @@ export async function updateUserBalance(
   await validateUserGroupMembership(userId, groupId);
 
   // Validate that admin is a member and is admin
-  await validateUserGroupMembership(adminUserId, groupId);
+  await validateUserIsGroupAdmin(adminUserId, groupId);
 
   const db = admin.firestore();
   const userGroupRef = db.collection("users").doc(userId)
     .collection("groups").doc(groupId);
   const groupMemberRef = db.collection("groups").doc(groupId)
     .collection("members").doc(userId);
-  const adminGroupRef = db.collection("users").doc(adminUserId)
-    .collection("groups").doc(groupId);
 
-  // Get current data
-  const [userGroupDoc, adminGroupDoc] = await Promise.all([
-    userGroupRef.get(),
-    adminGroupRef.get(),
-  ]);
-
+  // Get current user data
+  const userGroupDoc = await userGroupRef.get();
   const userGroupData = userGroupDoc.data();
-  const adminGroupData = adminGroupDoc.data();
-
-  // Validate admin permissions
-  if (!adminGroupData?.isAdmin) {
-    throw new Error("Only group admins can update user balances");
-  }
 
   // Validate amount is not zero
   if (amount === 0) {
@@ -498,15 +489,8 @@ export async function recordConsumption(
  * console.log("Total members:", groupDetails.memberCount);
  */
 export async function getGroupDetails(groupId: string): Promise<any> {
-  const db = admin.firestore();
-  const groupRef = db.collection("groups").doc(groupId);
-
-  // Get group data
+  const groupRef = await validateGroupExists(groupId);
   const groupDoc = await groupRef.get();
-  if (!groupDoc.exists) {
-    throw new Error("Group not found");
-  }
-
   const groupData = groupDoc.data();
   const kittyBalance = groupData?.kittyBalance || 0;
 
@@ -569,14 +553,7 @@ export async function getGroupDetails(groupId: string): Promise<any> {
  * });
  */
 export async function getGroupMembers(groupId: string): Promise<any[]> {
-  const db = admin.firestore();
-  const groupRef = db.collection("groups").doc(groupId);
-
-  // Verify group exists
-  const groupDoc = await groupRef.get();
-  if (!groupDoc.exists) {
-    throw new Error("Group not found");
-  }
+  const groupRef = await validateGroupExists(groupId);
 
   // Get all members
   const membersSnapshot = await groupRef.collection("members").get();
@@ -611,14 +588,8 @@ export async function getGroupMembers(groupId: string): Promise<any[]> {
  * console.log("Total groups:", userDetails.groupCount);
  */
 export async function getUserDetails(userId: string): Promise<any> {
-  const db = admin.firestore();
-  const userRef = db.collection("users").doc(userId);
-
-  // Get user data
+  const userRef = await validateUserExists(userId);
   const userDoc = await userRef.get();
-  if (!userDoc.exists) {
-    throw new Error("User not found");
-  }
 
   const userData = userDoc.data();
 
@@ -670,8 +641,7 @@ export async function getUserBuckets(
   // Validate that user is a member of the group
   await validateUserGroupMembership(userId, groupId);
 
-  const db = admin.firestore();
-  const groupRef = db.collection("groups").doc(groupId);
+  const groupRef = await validateGroupExists(groupId);
 
   // Get all buckets for this user in this group
   const bucketsSnapshot = await groupRef
@@ -712,14 +682,7 @@ export async function getUserBuckets(
  * });
  */
 export async function getGroupConsumption(groupId: string): Promise<any[]> {
-  const db = admin.firestore();
-  const groupRef = db.collection("groups").doc(groupId);
-
-  // Verify group exists
-  const groupDoc = await groupRef.get();
-  if (!groupDoc.exists) {
-    throw new Error("Group not found");
-  }
+  const groupRef = await validateGroupExists(groupId);
 
   // Get all consumption records
   const consumptionSnapshot = await groupRef
@@ -778,15 +741,8 @@ export async function createKittyTransaction(
     throw new Error("Transaction amount must be positive");
   }
 
-  const db = admin.firestore();
-  const groupRef = db.collection("groups").doc(groupId);
-
-  // Get current group data
+  const groupRef = await validateGroupExists(groupId);
   const groupDoc = await groupRef.get();
-  if (!groupDoc.exists) {
-    throw new Error("Group not found");
-  }
-
   const groupData = groupDoc.data();
   const currentKittyBalance = groupData?.kittyBalance || 0;
   const newKittyBalance = currentKittyBalance + amount;
@@ -827,14 +783,7 @@ export async function createKittyTransaction(
  * console.log("Transaction count:", transactions.length);
  */
 export async function getGroupTransactions(groupId: string): Promise<any[]> {
-  const db = admin.firestore();
-  const groupRef = db.collection("groups").doc(groupId);
-
-  // Verify group exists
-  const groupDoc = await groupRef.get();
-  if (!groupDoc.exists) {
-    throw new Error("Group not found");
-  }
+  const groupRef = await validateGroupExists(groupId);
 
   // Get all transactions
   const transactionsSnapshot = await groupRef
@@ -858,4 +807,213 @@ export async function getGroupTransactions(groupId: string): Promise<any[]> {
   });
 
   return transactions;
+}
+
+/**
+ * Creates a join request for a user to join a group
+ *
+ * This function allows users to request to join a group, which will
+ * be reviewed by the group admin. The request is stored in a separate
+ * collection and can be approved or denied by the admin.
+ *
+ * @param {string} groupId - The ID of the group
+ * @param {string} userId - The ID of the user requesting to join
+ * @param {string} message - Optional message from the user
+ * @return {Promise<string>} The ID of the created join request
+ *
+ * @example
+ * const requestId = await createJoinRequest(
+ *   "group123",
+ *   "user456",
+ *   "New player wants to join team"
+ * );
+ * console.log("Created join request:", requestId);
+ *
+ * @throws {Error} Various validation errors from validators
+ */
+export async function createJoinRequest(
+  groupId: string,
+  userId: string,
+  message?: string
+): Promise<string> {
+  const groupRef = await validateGroupExists(groupId);
+
+  // Validate that user is not already a member (using existing validator)
+  await validateUserNotInGroup(userId, groupId);
+
+  // Check if user already has a pending request
+  const existingRequestsSnapshot = await groupRef
+    .collection("join_requests")
+    .where("userId", "==", userId)
+    .where("status", "==", "pending")
+    .get();
+
+  if (!existingRequestsSnapshot.empty) {
+    throw new Error(
+      "User already has a pending join request for this group"
+    );
+  }
+
+  // Create join request document
+  const joinRequestRef = groupRef.collection("join_requests").doc();
+  const joinRequestData = {
+    userId,
+    message: message || "",
+    status: "pending",
+    createdAt: new Date(),
+  };
+
+  await joinRequestRef.set(joinRequestData);
+
+  return joinRequestRef.id;
+}
+
+/**
+ * Gets all join requests for a group
+ *
+ * This function retrieves all join requests for a group, allowing admins
+ * to see pending requests and their details.
+ *
+ * @param {string} groupId - The ID of the group
+ * @return {Promise<any[]>} Array of join request records
+ *
+ * @example
+ * const requests = await getJoinRequests("group123");
+ * console.log("Pending requests:", requests.length);
+ */
+export async function getJoinRequests(groupId: string): Promise<any[]> {
+  const groupRef = await validateGroupExists(groupId);
+
+  // Get all join requests
+  const requestsSnapshot = await groupRef
+    .collection("join_requests")
+    .orderBy("createdAt", "desc")
+    .get();
+
+  const requests: any[] = [];
+
+  requestsSnapshot.forEach((doc) => {
+    const requestData = doc.data();
+    const request = {
+      requestId: doc.id,
+      userId: requestData?.userId,
+      message: requestData?.message || "",
+      status: requestData?.status || "pending",
+      createdAt: requestData?.createdAt,
+      adminUserId: requestData?.adminUserId,
+      processedAt: requestData?.processedAt,
+      reason: requestData?.reason || "",
+    };
+    requests.push(request);
+  });
+
+  return requests;
+}
+
+/**
+ * Approves a join request and adds the user to the group
+ *
+ * This function allows group admins to approve join requests.
+ * When approved, the user is automatically added to the group.
+ *
+ * @param {string} groupId - The ID of the group
+ * @param {string} requestId - The ID of the join request
+ * @param {string} adminUserId - The ID of the admin approving the request
+ * @param {string} reason - Optional reason/message from admin
+ * @return {Promise<void>}
+ *
+ * @example
+ * await approveJoinRequest(
+ *   "group123",
+ *   "request456",
+ *   "admin789",
+ *   "Welcome to the team!"
+ * );
+ *
+ * @throws {Error} Various validation errors from validators
+ */
+export async function approveJoinRequest(
+  groupId: string,
+  requestId: string,
+  adminUserId: string,
+  reason?: string
+): Promise<void> {
+  const groupRef = await validateGroupExists(groupId);
+  const joinRequestRef = groupRef.collection("join_requests").doc(requestId);
+
+  // Verify join request exists
+  const requestDoc = await joinRequestRef.get();
+  if (!requestDoc.exists) {
+    throw new Error("Join request not found");
+  }
+
+  const requestData = requestDoc.data();
+  if (requestData?.status !== "pending") {
+    throw new Error("Join request is not pending");
+  }
+
+  // Verify admin is actually an admin of the group
+  await validateUserIsGroupAdmin(adminUserId, groupId);
+
+  const userId = requestData.userId;
+
+  // Update join request status
+  await joinRequestRef.update({
+    status: "approved",
+    adminUserId,
+    processedAt: new Date(),
+    reason: reason || "Approved by admin",
+  });
+
+  // Add user to group
+  await addUserToGroup(userId, groupId, false);
+}
+
+/**
+ * Denies a join request
+ *
+ * This function allows group admins to deny join requests.
+ * The request is marked as denied but the user is not added to the group.
+ *
+ * @param {string} groupId - The ID of the group
+ * @param {string} requestId - The ID of the join request
+ * @param {string} adminUserId - The ID of the admin denying the request
+ * @param {string} reason - Reason for denial
+ * @return {Promise<void>}
+ *
+ * @example
+ * await denyJoinRequest("group123", "request456", "admin789", "Team is full");
+ *
+ * @throws {Error} Various validation errors from validators
+ */
+export async function denyJoinRequest(
+  groupId: string,
+  requestId: string,
+  adminUserId: string,
+  reason: string
+): Promise<void> {
+  const groupRef = await validateGroupExists(groupId);
+  const joinRequestRef = groupRef.collection("join_requests").doc(requestId);
+
+  // Verify join request exists
+  const requestDoc = await joinRequestRef.get();
+  if (!requestDoc.exists) {
+    throw new Error("Join request not found");
+  }
+
+  const requestData = requestDoc.data();
+  if (requestData?.status !== "pending") {
+    throw new Error("Join request is not pending");
+  }
+
+  // Verify admin is actually an admin of the group
+  await validateUserIsGroupAdmin(adminUserId, groupId);
+
+  // Update join request status
+  await joinRequestRef.update({
+    status: "denied",
+    adminUserId,
+    processedAt: new Date(),
+    reason: reason,
+  });
 }
