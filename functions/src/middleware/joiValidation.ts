@@ -7,9 +7,13 @@ import {
   recordConsumptionSchema,
   updateUserBalanceSchema,
   createKittyTransactionSchema,
+  createJoinRequestSchema,
+  approveJoinRequestSchema,
+  denyJoinRequestSchema,
   groupIdParamSchema,
   userIdParamSchema,
   groupAndUserIdParamSchema,
+  groupAndRequestIdParamSchema,
   createValidationMiddleware,
   createParamValidationMiddleware,
 } from "../schemas/validationSchemas";
@@ -53,6 +57,19 @@ export const validateKittyTransaction = createValidationMiddleware(
   createKittyTransactionSchema
 );
 
+// Join request validation
+export const validateCreateJoinRequest = createValidationMiddleware(
+  createJoinRequestSchema
+);
+
+export const validateApproveJoinRequest = createValidationMiddleware(
+  approveJoinRequestSchema
+);
+
+export const validateDenyJoinRequest = createValidationMiddleware(
+  denyJoinRequestSchema
+);
+
 // Path parameter validations
 export const validateGroupIdParam = createParamValidationMiddleware(
   groupIdParamSchema
@@ -62,4 +79,7 @@ export const validateUserIdParam = createParamValidationMiddleware(
 );
 export const validateGroupAndUserIdParam = createParamValidationMiddleware(
   groupAndUserIdParamSchema
+);
+export const validateGroupAndRequestIdParam = createParamValidationMiddleware(
+  groupAndRequestIdParamSchema
 );
