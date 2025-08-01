@@ -589,10 +589,7 @@ export async function getGroupMembers(groupId: string): Promise<any[]> {
  * console.log("Total groups:", userDetails.groupCount);
  */
 export async function getUserDetails(userId: string): Promise<any> {
-  const userRef = await validateUserExists(userId);
-  const userDoc = await userRef.get();
-
-  const userData = userDoc.data();
+  const { ref: userRef, data: userData } = await validateUserExists(userId);
 
   // Get all user's groups
   const groupsSnapshot = await userRef.collection("groups").get();
@@ -611,6 +608,7 @@ export async function getUserDetails(userId: string): Promise<any> {
   });
 
   return {
+    id: userId, // Add 'id' field for backward compatibility with tests
     userId,
     displayName: userData?.displayName,
     email: userData?.email,

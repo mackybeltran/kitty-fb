@@ -242,11 +242,13 @@ export const userIdParamSchema = Joi.object({
     .min(1)
     .max(100)
     .trim()
+    .pattern(/^[a-zA-Z0-9_-]+$/) // Only allow alphanumeric, underscore, and hyphen
     .required()
     .messages({
       "string.empty": "User ID cannot be empty",
       "string.min": "User ID must be at least 1 character",
       "string.max": "User ID cannot exceed 100 characters",
+      "string.pattern.base": "User ID contains invalid characters",
       "any.required": "User ID is required",
     }),
 });
@@ -479,8 +481,17 @@ export const createValidationMiddleware = (schema: Joi.ObjectSchema) => {
       const errorMessages = error.details.map(
         (detail: Joi.ValidationErrorItem) => detail.message
       );
+      
+      // Create a more descriptive error message that includes field names
+      const fieldErrors = error.details.map(
+        (detail: Joi.ValidationErrorItem) => detail.path.join('.')
+      );
+      const errorMessage = fieldErrors.length > 0 
+        ? `Validation failed for fields: ${fieldErrors.join(', ')}`
+        : "Validation failed";
+      
       return res.status(400).json({
-        error: "Validation failed",
+        error: errorMessage,
         details: errorMessages,
         statusCode: 400,
       });
