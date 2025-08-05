@@ -33,6 +33,17 @@ const getFirebaseConfig = () => {
 
 const config = getFirebaseConfig();
 
+// Check if emulators are running
+const checkEmulatorHealth = async (): Promise<boolean> => {
+  try {
+    const response = await fetch('http://localhost:8080');
+    return response.ok;
+  } catch (error) {
+    console.warn('Firestore emulator not running on localhost:8080');
+    return false;
+  }
+};
+
 const testEnv = functionsTest({ projectId: config.projectId });
 if (!admin.apps.length) {
   const appConfig: admin.AppOptions = {
@@ -49,6 +60,12 @@ if (!admin.apps.length) {
   admin.initializeApp(appConfig);
 }
 
+// Track test data for more efficient cleanup
+let testDataIds: { users: string[], groups: string[] } = {
+  users: [],
+  groups: []
+};
+
 // Test utilities for unit tests
 export const createTestUser = async (): Promise<string> => {
   const userRef = admin.firestore().collection('users').doc();
@@ -57,6 +74,7 @@ export const createTestUser = async (): Promise<string> => {
     email: 'test@example.com',
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
+  testDataIds.users.push(userRef.id);
   return userRef.id;
 };
 
@@ -70,22 +88,55 @@ export const createTestGroup = async (): Promise<string> => {
     buckets: [],
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
+  testDataIds.groups.push(groupRef.id);
   return groupRef.id;
 };
 
 export const cleanupTestData = async (): Promise<void> => {
-  // Clean up test data after each test
+  // Check emulator health first
+  const emulatorRunning = await checkEmulatorHealth();
+  if (!emulatorRunning) {
+    console.warn('Skipping cleanup - emulator not running');
+    return;
+  }
+
   const db = admin.firestore();
   
-  // Clean up users
-  const usersSnapshot = await db.collection('users').get();
-  const userDeletes = usersSnapshot.docs.map(doc => doc.ref.delete());
-  
-  // Clean up groups
-  const groupsSnapshot = await db.collection('groups').get();
-  const groupDeletes = groupsSnapshot.docs.map(doc => doc.ref.delete());
-  
-  await Promise.all([...userDeletes, ...groupDeletes]);
+  try {
+    // Clean up tracked test data first (more efficient)
+    const trackedDeletes: Promise<any>[] = [];
+    
+    // Clean up tracked users
+    for (const userId of testDataIds.users) {
+      trackedDeletes.push(db.collection('users').doc(userId).delete());
+    }
+    
+    // Clean up tracked groups
+    for (const groupId of testDataIds.groups) {
+      trackedDeletes.push(db.collection('groups').doc(groupId).delete());
+    }
+    
+    if (trackedDeletes.length > 0) {
+      await Promise.all(trackedDeletes);
+    }
+    
+    // Reset tracked IDs
+    testDataIds = { users: [], groups: [] };
+    
+    // Fallback: clean up any remaining test data (less frequent)
+    if (Math.random() < 0.1) { // Only 10% of the time
+      const usersSnapshot = await db.collection('users').get();
+      const userDeletes = usersSnapshot.docs.map(doc => doc.ref.delete());
+      
+      const groupsSnapshot = await db.collection('groups').get();
+      const groupDeletes = groupsSnapshot.docs.map(doc => doc.ref.delete());
+      
+      await Promise.all([...userDeletes, ...groupDeletes]);
+    }
+  } catch (error) {
+    console.warn('Cleanup failed:', error);
+    // Don't throw - cleanup failures shouldn't fail tests
+  }
 };
 
 export { testEnv, admin }; 

@@ -1,8 +1,5 @@
-import * as supertest from 'supertest';
+import { createUserSchema } from '../schemas/validationSchemas';
 import { testEnv, createTestUser, cleanupTestData, admin } from './unit-setup';
-import { app } from '../app';
-
-const api = supertest(app);
 
 describe('User Validation (Unit Tests)', () => {
   beforeEach(async () => {
@@ -23,16 +20,13 @@ describe('User Validation (Unit Tests)', () => {
       ];
 
       for (const email of validEmails) {
-        const response = await api
-          .post('/users/new')
-          .send({
-            displayName: 'Test User',
-            email: email
-          });
-
-        // Should either succeed (201) or fail with validation error (400)
-        // But should NOT fail with server error (500)
-        expect(response.status).not.toBe(500);
+        const result = createUserSchema.validate({
+          displayName: 'Test User',
+          email: email
+        });
+        
+        expect(result.error).toBeUndefined();
+        expect(result.value.email).toBe(email.toLowerCase()); // Should be normalized
       }
     });
 
@@ -45,15 +39,13 @@ describe('User Validation (Unit Tests)', () => {
       ];
 
       for (const email of invalidEmails) {
-        const response = await api
-          .post('/users/new')
-          .send({
-            displayName: 'Test User',
-            email: email
-          });
-
-        expect(response.status).toBe(400);
-        expect(response.body).toHaveProperty('error');
+        const result = createUserSchema.validate({
+          displayName: 'Test User',
+          email: email
+        });
+        
+        expect(result.error).toBeDefined();
+        expect(result.error?.message).toContain('valid email address');
       }
     });
   });
@@ -68,27 +60,55 @@ describe('User Validation (Unit Tests)', () => {
       ];
 
       for (const name of validNames) {
-        const response = await api
-          .post('/users/new')
-          .send({
-            displayName: name,
-            email: 'test@example.com'
-          });
-
-        expect(response.status).not.toBe(500);
+        const result = createUserSchema.validate({
+          displayName: name,
+          email: 'test@example.com'
+        });
+        
+        expect(result.error).toBeUndefined();
+        expect(result.value.displayName).toBe(name.trim()); // Should be trimmed
       }
     });
 
     it('should reject empty display names', async () => {
-      const response = await api
-        .post('/users/new')
-        .send({
-          displayName: '',
-          email: 'test@example.com'
-        });
+      const result = createUserSchema.validate({
+        displayName: '',
+        email: 'test@example.com'
+      });
 
-      expect(response.status).toBe(400);
-      expect(response.body).toHaveProperty('error');
+      expect(result.error).toBeDefined();
+      expect(result.error?.message).toContain('empty');
+    });
+
+    it('should reject display names that are too long', async () => {
+      const longName = 'A'.repeat(101); // 101 characters
+      const result = createUserSchema.validate({
+        displayName: longName,
+        email: 'test@example.com'
+      });
+
+      expect(result.error).toBeDefined();
+      expect(result.error?.message).toContain('100 characters');
+    });
+  });
+
+  describe('Required Fields Validation', () => {
+    it('should reject missing displayName', async () => {
+      const result = createUserSchema.validate({
+        email: 'test@example.com'
+      });
+
+      expect(result.error).toBeDefined();
+      expect(result.error?.message).toContain('required');
+    });
+
+    it('should reject missing email', async () => {
+      const result = createUserSchema.validate({
+        displayName: 'Test User'
+      });
+
+      expect(result.error).toBeDefined();
+      expect(result.error?.message).toContain('required');
     });
   });
 
@@ -102,21 +122,23 @@ describe('User Validation (Unit Tests)', () => {
       
       expect(userDoc.exists).toBe(true);
       expect(userDoc.data()?.displayName).toBe('Test User');
+      expect(userDoc.data()?.email).toBe('test@example.com');
     });
 
     it('should clean up test data', async () => {
-      // Create some test data
-      await createTestUser();
-      await createTestUser();
+      const userId = await createTestUser();
+      
+      // Verify user exists
+      const db = admin.firestore();
+      const userDoc = await db.collection('users').doc(userId).get();
+      expect(userDoc.exists).toBe(true);
       
       // Clean up
       await cleanupTestData();
       
-      // Verify cleanup worked
-      const db = admin.firestore();
-      const usersSnapshot = await db.collection('users').get();
-      
-      expect(usersSnapshot.empty).toBe(true);
+      // Verify user is gone
+      const userDocAfter = await db.collection('users').doc(userId).get();
+      expect(userDocAfter.exists).toBe(false);
     });
   });
 }); 

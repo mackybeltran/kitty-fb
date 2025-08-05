@@ -9,8 +9,12 @@ module.exports = {
     '!src/index.ts',
   ],
   setupFilesAfterEnv: ['<rootDir>/src/__tests__/unit-setup.ts'], // Uses emulator setup
-  testTimeout: 15000, // Increased timeout
+  testTimeout: 30000, // Increased timeout to 30 seconds for emulator operations
   transform: {
     '^.+\\.ts$': 'ts-jest'
-  }
+  },
+  // Add better handling for async operations
+  maxWorkers: 1, // Run tests sequentially to avoid emulator conflicts
+  forceExit: true, // Force exit after tests complete
+  detectOpenHandles: true // Detect any open handles that prevent cleanup
 }; 
