@@ -19,30 +19,29 @@ import * as admin from "firebase-admin";
 /**
  * Validates that a user exists in the database
  *
- * This function is used as a building block for other validations.
- * It performs a database lookup and throws a descriptive error if
- * the user doesn't exist, making debugging easier.
+ * This function checks if a user exists and returns both the document
+ * reference and the document data for further operations.
  *
  * @param {string} userId - The user ID to validate
- * @return {Promise<admin.firestore.DocumentReference>} The user document
- * reference if found
+ * @return {Promise<{ref: admin.firestore.DocumentReference, data: any}>}
+ * Object containing the user document reference and data if found
  * @throws {Error} "User not found" if the user doesn't exist
  *
  * @example
  * // Basic usage
- * const userRef = await validateUserExists("user123");
+ * const { ref: userRef, data: userData } = await validateUserExists("user123");
  *
- * // In a try-catch block
- * try {
- *   const userRef = await validateUserExists("user123");
- *   // User exists, proceed with operations
- * } catch (error) {
- *   // Handle "User not found" error
+ * // Use the reference for further operations
+ * await userRef.update({ displayName: "New Name" });
+ *
+ * // Use the data for validation or processing
+ * if (userData.email) {
+ *   console.log("User email:", userData.email);
  * }
  */
 export async function validateUserExists(
   userId: string
-): Promise<admin.firestore.DocumentReference> {
+): Promise<{ ref: admin.firestore.DocumentReference; data: any }> {
   const db = admin.firestore();
   const userRef = db.collection("users").doc(userId);
   const userDoc = await userRef.get();
@@ -51,7 +50,7 @@ export async function validateUserExists(
     throw new Error("User not found");
   }
 
-  return userRef;
+  return { ref: userRef, data: userDoc.data() };
 }
 
 /**
