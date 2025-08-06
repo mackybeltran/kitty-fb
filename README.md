@@ -29,6 +29,8 @@ A Firebase Cloud Functions API for managing shared inventory in group spaces. Us
 - **Balance Management** - Admin-controlled debt tracking for users
 - **Join Request System** - Secure group membership with admin approval
 - **Kitty Transactions** - Track group finances and contributions
+- **QR Code System** - Multi-purpose QR codes for onboarding and consumption
+- **NFC Integration** - Contactless consumption tracking with phone number identification
 - **RESTful API** - Complete Firebase Cloud Functions backend
 
 ## 📚 Documentation
@@ -72,6 +74,7 @@ kitty-fb/
 │   │   └── utils/       # Shared utilities
 │   └── package.json
 ├── docs/               # Documentation
+├── nfc-programmer.html # NFC tag programming tool
 ├── firebase.json       # Firebase configuration
 └── README.md          # This file
 ```

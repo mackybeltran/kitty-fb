@@ -66,6 +66,16 @@ Kitty FB is a Firebase Cloud Functions API that manages shared inventory systems
 ### Component Responsibilities
 
 #### Controllers
+- **UserController**: User creation and profile management
+- **GroupController**: Group operations and membership management
+- **BucketController**: Bucket purchases and consumption tracking
+- **BalanceController**: User balance management (admin operations)
+- **TransactionController**: Kitty transaction tracking
+- **QRCodeController**: QR code generation and processing
+- **NFCController**: NFC-based consumption and user identification
+- **DevController**: Development utilities and testing tools
+
+All controllers:
 - Handle HTTP requests and responses
 - Validate input data
 - Call appropriate services
@@ -242,6 +252,20 @@ The system uses strategic denormalization for performance:
 - **Duplicate Prevention**: Prevents multiple pending requests
 - **Audit Trail**: Maintains history of all requests and decisions
 
+#### QR Code System
+- **Multi-Purpose**: QR codes for onboarding, consumption, or dual-purpose
+- **Platform Support**: iOS, Android, and web platform detection
+- **Context-Aware**: Processing determines appropriate action based on user state
+- **Version Tracking**: Includes version and device information for compatibility
+- **Dynamic URLs**: Platform-specific URLs for app store or web access
+
+#### NFC System
+- **Phone-Based Identification**: Uses phone numbers for user identification
+- **Multiple Scenarios**: Handles direct consumption, onboarding, and join requests
+- **Seamless Flow**: Automatic user lookup and profile updates
+- **International Format**: Phone numbers in E.164 format (+1234567890)
+- **Fallback Handling**: Graceful degradation when users not found
+
 ### Workflows
 
 #### User Onboarding
@@ -351,8 +375,8 @@ The system uses strategic denormalization for performance:
 1. **Authentication**: Firebase Auth integration
 2. **Real-time Updates**: Firestore listeners for live data
 3. **Mobile App**: React Native frontend
-4. **NFC Integration**: Contactless consumption tracking
-5. **Analytics**: Usage analytics and reporting
+4. **Analytics**: Usage analytics and reporting
+5. **Advanced NFC Features**: Enhanced NFC capabilities and integrations
 
 ### Technical Improvements
 1. **Caching**: Redis or Firestore caching layer

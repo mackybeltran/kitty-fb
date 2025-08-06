@@ -61,6 +61,8 @@ functions/
 │   │   ├── bucketController.ts
 │   │   ├── balanceController.ts
 │   │   ├── transactionController.ts
+│   │   ├── qrCodeController.ts
+│   │   ├── nfcController.ts
 │   │   └── devController.ts
 │   ├── services/
 │   │   └── firestore.ts          # Business logic
@@ -411,6 +413,123 @@ console.log('User created', {
 });
 ```
 
+## NFC and QR Code Development
+
+### NFC Features
+
+The NFC system provides contactless consumption tracking using phone number identification:
+
+#### Key Components
+- **NFCController**: Handles NFC consumption, profile updates, and user lookup
+- **Phone Number Validation**: E.164 format validation (+1234567890)
+- **User Identification**: Automatic user lookup by phone number
+- **Consumption Scenarios**: Direct consumption, onboarding, and join requests
+
+#### Testing NFC Features
+```bash
+# Test NFC consumption
+curl -X POST http://localhost:5001/your-project/us-central1/api/nfc/consume \
+  -H "Content-Type: application/json" \
+  -d '{
+    "groupId": "test-group",
+    "amount": 1,
+    "phoneNumber": "+1234567890"
+  }'
+
+# Test user profile update
+curl -X POST http://localhost:5001/your-project/us-central1/api/nfc/profile \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": "user123",
+    "phoneNumber": "+1234567890"
+  }'
+
+# Test user lookup
+curl -X GET http://localhost:5001/your-project/us-central1/api/nfc/users/+1234567890
+```
+
+#### NFC Programmer Tool
+The project includes `nfc-programmer.html` for testing NFC tag programming:
+- Read and write NFC tags
+- Batch operations for multiple tags
+- Preset configurations for common scenarios
+- Web NFC API support (Chrome 89+)
+
+### QR Code Features
+
+The QR code system provides multi-purpose codes for onboarding and consumption:
+
+#### Key Components
+- **QRCodeController**: Generates and processes QR codes
+- **Multi-Purpose Codes**: Onboarding, consumption, or dual-purpose
+- **Platform Detection**: iOS, Android, and web platform support
+- **Context-Aware Processing**: Determines appropriate action based on user state
+
+#### Testing QR Code Features
+```bash
+# Generate QR code
+curl -X POST http://localhost:5001/your-project/us-central1/api/groups/test-group/qr-code \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "dual-purpose",
+    "size": 300
+  }'
+
+# Generate QR code image
+curl -X POST http://localhost:5001/your-project/us-central1/api/groups/test-group/qr-code/image \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "dual-purpose",
+    "size": 300
+  }'
+
+# Process QR code
+curl -X POST http://localhost:5001/your-project/us-central1/api/qr-code/process \
+  -H "Content-Type: application/json" \
+  -d '{
+    "qrData": "{\"type\":\"dual-purpose\",\"groupId\":\"test-group\"}",
+    "userContext": {
+      "userId": "user123",
+      "platform": "ios",
+      "appVersion": "1.0.0"
+    }
+  }'
+```
+
+#### QR Code Data Structure
+```json
+{
+  "type": "dual-purpose",
+  "groupId": "group123",
+  "version": "1.0",
+  "timestamp": 1640995200000,
+  "urls": {
+    "ios": "https://apps.apple.com/app/kitty-fb/id123456789",
+    "android": "https://play.google.com/store/apps/details?id=com.kittyfb.app",
+    "web": "https://kitty-fb.web.app/group/group123"
+  }
+}
+```
+
+### Development Considerations
+
+#### Dependencies
+- **qrcode**: QR code generation library
+- **@types/qrcode**: TypeScript definitions for QR code library
+
+#### Validation Schemas
+- **nfcConsumptionSchema**: Validates NFC consumption requests
+- **nfcProfileUpdateSchema**: Validates profile update requests
+- **phoneNumberParamSchema**: Validates phone number parameters
+- **generateQRCodeSchema**: Validates QR code generation requests
+- **processQRCodeSchema**: Validates QR code processing requests
+
+#### Error Handling
+- **Phone Number Format**: Must be in E.164 format
+- **QR Code Size**: Limited to 100-1000 pixels
+- **User Context**: Required for QR code processing
+- **Group Validation**: Ensures group exists before operations
+
 ## Next Steps
 
 After setting up development environment:
@@ -418,5 +537,7 @@ After setting up development environment:
 1. **Explore the codebase** - Understand the architecture
 2. **Run tests** - Ensure everything works
 3. **Make small changes** - Get familiar with the workflow
+4. **Test NFC features** - Use the NFC programmer tool
+5. **Test QR codes** - Generate and process QR codes
 4. **Contribute** - Pick up issues or create new features
 5. **Document** - Update documentation as needed 
