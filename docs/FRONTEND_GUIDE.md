@@ -87,6 +87,43 @@ interface JoinRequest {
   processedAt?: Date;
   reason?: string;
 }
+
+interface QRCodeData {
+  qrCodeDataUrl: string;
+  qrCodeContent: string;
+  groupInfo: {
+    id: string;
+    name: string;
+    memberCount: number;
+    kittyBalance: number;
+  };
+}
+
+interface QRCodeProcessResult {
+  action: 'onboarding' | 'consumption' | 'join-request';
+  groupId: string;
+  groupInfo: {
+    id: string;
+    name: string;
+    memberCount: number;
+  };
+  userInfo?: {
+    isMember: boolean;
+    isAdmin: boolean;
+    activeBucketId: string | null;
+    remainingUnits: number;
+    hasActiveBucket: boolean;
+  };
+}
+
+interface NFCUser {
+  userId: string;
+  displayName: string;
+  email: string;
+  phoneNumber: string;
+  createdAt: Date;
+  updatedAt?: Date;
+}
 ```
 
 ## API Client Implementation
@@ -261,6 +298,87 @@ class KittyFBClient {
       method: 'POST',
       body: JSON.stringify({ adminUserId, reason }),
     });
+  }
+
+  // QR Code Management
+  async generateQRCode(
+    groupId: string,
+    type: 'dual-purpose' | 'onboarding' | 'consumption' = 'dual-purpose',
+    size: number = 300
+  ): Promise<QRCodeData> {
+    return this.request(`/groups/${groupId}/qr-code`, {
+      method: 'POST',
+      body: JSON.stringify({ type, size }),
+    });
+  }
+
+  async generateQRCodeImage(
+    groupId: string,
+    type: 'dual-purpose' | 'onboarding' | 'consumption' = 'dual-purpose',
+    size: number = 300
+  ): Promise<Blob> {
+    const response = await this.request(`/groups/${groupId}/qr-code/image`, {
+      method: 'POST',
+      body: JSON.stringify({ type, size }),
+      responseType: 'blob',
+    });
+    return response;
+  }
+
+  async processQRCode(
+    qrData: string,
+    userContext: {
+      userId?: string;
+      platform: 'ios' | 'android' | 'web';
+      appVersion?: string;
+      deviceId?: string;
+    }
+  ): Promise<QRCodeProcessResult> {
+    return this.request('/qr-code/process', {
+      method: 'POST',
+      body: JSON.stringify({ qrData, userContext }),
+    });
+  }
+
+  // NFC Management
+  async nfcConsume(
+    groupId: string,
+    amount: number,
+    phoneNumber?: string,
+    userId?: string
+  ): Promise<{
+    success: boolean;
+    message: string;
+    data?: {
+      groupId: string;
+      userId: string;
+      amount: number;
+      groupName: string;
+    };
+    action?: 'onboarding' | 'join-request';
+    groupInfo?: {
+      id: string;
+      name: string;
+    };
+  }> {
+    return this.request('/nfc/consume', {
+      method: 'POST',
+      body: JSON.stringify({ groupId, amount, phoneNumber, userId }),
+    });
+  }
+
+  async updateUserProfile(
+    userId: string,
+    phoneNumber: string
+  ): Promise<{ success: boolean; message: string; data: { userId: string; phoneNumber: string } }> {
+    return this.request('/nfc/profile', {
+      method: 'POST',
+      body: JSON.stringify({ userId, phoneNumber }),
+    });
+  }
+
+  async lookupUserByPhone(phoneNumber: string): Promise<NFCUser> {
+    return this.request(`/nfc/users/${encodeURIComponent(phoneNumber)}`);
   }
 }
 ```
@@ -659,29 +777,198 @@ class ReactNativeKittyFBClient extends KittyFBClient {
 }
 ```
 
-### NFC Integration (Future)
+### NFC Integration
 
 ```typescript
-// NFC consumption tracking
+// NFC consumption tracking with phone number identification
 const useNFCConsumption = () => {
   const { currentGroup, currentUser } = useAppContext();
   const api = new KittyFBClient(API_CONFIG.baseUrl);
 
-  const handleNFCTap = async (nfcData: string) => {
-    // Parse NFC data to get group ID and consumption endpoint
-    const { groupId } = parseNFCData(nfcData);
-    
-    if (groupId === currentGroup?.id && currentUser) {
-      try {
-        await api.recordConsumption(groupId, currentUser.id, 1);
+  const handleNFCTap = async (nfcData: string, phoneNumber?: string) => {
+    try {
+      // Parse NFC data to get group ID and consumption amount
+      const { groupId, amount } = parseNFCData(nfcData);
+      
+      // Use NFC consumption endpoint with phone number identification
+      const result = await api.nfcConsume(groupId, amount, phoneNumber, currentUser?.id);
+      
+      if (result.success) {
         // Show success feedback (haptic, sound, etc.)
-      } catch (error) {
-        // Show error feedback
+        return { success: true, message: result.message };
+      } else {
+        // Handle different scenarios
+        switch (result.action) {
+          case 'onboarding':
+            // Navigate to onboarding flow
+            return { action: 'onboarding', groupInfo: result.groupInfo };
+          case 'join-request':
+            // Navigate to join request flow
+            return { action: 'join-request', groupInfo: result.groupInfo };
+          default:
+            return { success: false, message: result.message };
+        }
       }
+    } catch (error) {
+      // Show error feedback
+      return { success: false, message: error.message };
     }
   };
 
-  return { handleNFCTap };
+  const updatePhoneNumber = async (phoneNumber: string) => {
+    if (!currentUser) throw new Error('No current user');
+    
+    try {
+      await api.updateUserProfile(currentUser.id, phoneNumber);
+      return { success: true, message: 'Phone number updated successfully' };
+    } catch (error) {
+      return { success: false, message: error.message };
+    }
+  };
+
+  const lookupUser = async (phoneNumber: string) => {
+    try {
+      const user = await api.lookupUserByPhone(phoneNumber);
+      return { success: true, user };
+    } catch (error) {
+      return { success: false, message: error.message };
+    }
+  };
+
+  return { handleNFCTap, updatePhoneNumber, lookupUser };
+};
+
+// NFC data parsing utility
+const parseNFCData = (nfcData: string) => {
+  try {
+    // Handle different NFC data formats
+    if (nfcData.startsWith('kitty://')) {
+      // Custom protocol format: kitty://consume/{groupId}/{amount}
+      const parts = nfcData.split('/');
+      return {
+        groupId: parts[3],
+        amount: parseInt(parts[4], 10),
+      };
+    } else if (nfcData.includes(':')) {
+      // Simple format: {groupId}:{amount}
+      const [groupId, amount] = nfcData.split(':');
+      return {
+        groupId,
+        amount: parseInt(amount, 10),
+      };
+    } else {
+      // Try to parse as JSON
+      const data = JSON.parse(nfcData);
+      return {
+        groupId: data.groupId,
+        amount: data.amount || 1,
+      };
+    }
+  } catch (error) {
+    throw new Error('Invalid NFC data format');
+  }
+};
+```
+
+### QR Code Integration
+
+```typescript
+// QR code generation and processing
+const useQRCode = () => {
+  const { currentGroup } = useAppContext();
+  const api = new KittyFBClient(API_CONFIG.baseUrl);
+
+  const generateQRCode = async (
+    type: 'dual-purpose' | 'onboarding' | 'consumption' = 'dual-purpose',
+    size: number = 300
+  ) => {
+    if (!currentGroup) throw new Error('No current group selected');
+    
+    try {
+      const qrData = await api.generateQRCode(currentGroup.id, type, size);
+      return { success: true, qrData };
+    } catch (error) {
+      return { success: false, message: error.message };
+    }
+  };
+
+  const generateQRCodeImage = async (
+    type: 'dual-purpose' | 'onboarding' | 'consumption' = 'dual-purpose',
+    size: number = 300
+  ) => {
+    if (!currentGroup) throw new Error('No current group selected');
+    
+    try {
+      const imageBlob = await api.generateQRCodeImage(currentGroup.id, type, size);
+      return { success: true, imageBlob };
+    } catch (error) {
+      return { success: false, message: error.message };
+    }
+  };
+
+  const processQRCode = async (
+    qrData: string,
+    platform: 'ios' | 'android' | 'web',
+    userId?: string
+  ) => {
+    try {
+      const userContext = {
+        userId,
+        platform,
+        appVersion: '1.0.0', // Get from app config
+        deviceId: 'device-id', // Get from device
+      };
+      
+      const result = await api.processQRCode(qrData, userContext);
+      return { success: true, result };
+    } catch (error) {
+      return { success: false, message: error.message };
+    }
+  };
+
+  return { generateQRCode, generateQRCodeImage, processQRCode };
+};
+
+// QR code display component
+const QRCodeDisplay: React.FC<{
+  groupId: string;
+  type?: 'dual-purpose' | 'onboarding' | 'consumption';
+  size?: number;
+}> = ({ groupId, type = 'dual-purpose', size = 300 }) => {
+  const [qrData, setQrData] = useState<QRCodeData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const api = new KittyFBClient(API_CONFIG.baseUrl);
+
+  useEffect(() => {
+    const generateQR = async () => {
+      setLoading(true);
+      setError(null);
+      
+      try {
+        const result = await api.generateQRCode(groupId, type, size);
+        setQrData(result);
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    generateQR();
+  }, [groupId, type, size]);
+
+  if (loading) return <div>Generating QR code...</div>;
+  if (error) return <div>Error: {error}</div>;
+  if (!qrData) return null;
+
+  return (
+    <div>
+      <img src={qrData.qrCodeDataUrl} alt="QR Code" />
+      <p>Group: {qrData.groupInfo.name}</p>
+      <p>Members: {qrData.groupInfo.memberCount}</p>
+    </div>
+  );
 };
 ```
 

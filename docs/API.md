@@ -222,6 +222,92 @@ Error responses include a descriptive message:
 - **Response:** `200` with success message
 - **Errors:** `400` for non-admin user or missing reason
 
+### QR Code Management
+
+#### Generate QR Code
+- **URL:** `POST /groups/{groupId}/qr-code`
+- **Description:** Generates a QR code for a group with configurable options
+- **Body:**
+  ```json
+  {
+    "type": "dual-purpose",
+    "size": 300
+  }
+  ```
+- **Parameters:**
+  - `type` (optional): QR code type - "dual-purpose", "onboarding", or "consumption" (default: "dual-purpose")
+  - `size` (optional): QR code size in pixels, 100-1000 (default: 300)
+- **Response:** `200` with QR code data URL and content
+- **Errors:** `400` for invalid parameters, `404` if group not found
+
+#### Generate QR Code Image
+- **URL:** `POST /groups/{groupId}/qr-code/image`
+- **Description:** Generates and returns QR code as a PNG image
+- **Body:** Same as Generate QR Code
+- **Response:** `200` with PNG image data
+- **Errors:** `400` for invalid parameters, `404` if group not found
+
+#### Process QR Code
+- **URL:** `POST /qr-code/process`
+- **Description:** Processes a scanned QR code and determines appropriate action
+- **Body:**
+  ```json
+  {
+    "qrData": "{\"type\":\"dual-purpose\",\"groupId\":\"group123\"}",
+    "userContext": {
+      "userId": "user123",
+      "platform": "ios",
+      "appVersion": "1.0.0",
+      "deviceId": "device123"
+    }
+  }
+  ```
+- **Response:** `200` with action and group/user information
+- **Errors:** `400` for invalid QR data or missing context
+
+### NFC Management
+
+#### NFC Consumption
+- **URL:** `POST /nfc/consume`
+- **Description:** Handles NFC-based consumption with phone number identification
+- **Body:**
+  ```json
+  {
+    "groupId": "group123",
+    "amount": 1,
+    "phoneNumber": "+1234567890",
+    "userId": "user123"
+  }
+  ```
+- **Parameters:**
+  - `groupId` (required): The group ID for consumption
+  - `amount` (required): Number of units to consume (1-100)
+  - `phoneNumber` (optional): User's phone number for identification
+  - `userId` (optional): Direct user ID (takes precedence over phone number)
+- **Response:** `200` with consumption result or onboarding flow
+- **Errors:** `400` for invalid data, `404` if group not found
+
+#### Update User Profile
+- **URL:** `POST /nfc/profile`
+- **Description:** Updates user profile with phone number for NFC identification
+- **Body:**
+  ```json
+  {
+    "userId": "user123",
+    "phoneNumber": "+1234567890"
+  }
+  ```
+- **Response:** `200` with success message
+- **Errors:** `400` for invalid phone number, `404` if user not found
+
+#### Lookup User by Phone Number
+- **URL:** `GET /nfc/users/{phoneNumber}`
+- **Description:** Finds a user by their phone number for NFC identification
+- **Parameters:**
+  - `phoneNumber` (path): Phone number in international format (e.g., +1234567890)
+- **Response:** `200` with user details if found
+- **Errors:** `400` for invalid phone number, `404` if user not found
+
 ## Development Utilities
 
 ⚠️ **WARNING: These utilities are for development/testing only and will modify database data.**
@@ -318,4 +404,19 @@ Available only when `NODE_ENV=development` or `ENABLE_DEV_UTILITIES=true`.
 - Admins review and approve/deny requests
 - Prevents duplicate join requests from same user
 - Maintains audit trail of all requests and decisions
-- Automatic user addition upon approval 
+- Automatic user addition upon approval
+
+### QR Code System
+- QR codes can be generated for onboarding, consumption, or dual-purpose
+- QR codes contain group information and platform-specific URLs
+- Processing determines appropriate action based on user context
+- Supports iOS, Android, and web platforms
+- Includes version tracking and device information
+
+### NFC System
+- Supports phone number-based user identification
+- Handles multiple consumption scenarios (direct, onboarding, join requests)
+- Phone numbers must be in international format (+1234567890)
+- Automatic user lookup by phone number
+- Profile updates for NFC-enabled users
+- Seamless consumption flow for registered users 
