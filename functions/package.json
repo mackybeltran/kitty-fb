@@ -14,7 +14,10 @@
     "test": "jest",
     "test:unit": "jest --config jest.unit.config.js",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "seed": "node ../scripts/seed-database.js",
+    "seed:reset": "node ../scripts/seed-database.js --reset-only",
+    "seed:large": "node ../scripts/seed-database.js --users=15 --groups=8 --max-users=10"
   },
   "engines": {
     "node": "18"
