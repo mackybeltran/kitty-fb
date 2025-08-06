@@ -1,21 +1,21 @@
 # Testing Architecture
 
-This project uses a dual testing approach with unit tests and integration tests.
+This project uses a unified testing approach where both unit tests and integration tests use the development database.
 
 ## Test Types
 
 ### Unit Tests (`.unit.test.ts` files)
 - **Purpose**: Test individual functions and utilities in isolation
-- **Environment**: Firebase Emulators (localhost:8080, localhost:5001)
-- **Database**: Local emulator database
+- **Environment**: Development database (`kitty-680c6`)
+- **Database**: Real Firebase development database
 - **Setup**: `unit-setup.ts`
 - **Config**: `jest.unit.config.js`
 - **Command**: `npm run test:unit`
 
 ### Integration Tests (`.test.ts` files - no `.unit.` prefix)
 - **Purpose**: Test full API endpoints with real database operations
-- **Environment**: Real Firebase development database
-- **Database**: `kitty-680c6` (development project)
+- **Environment**: Development database (`kitty-680c6`)
+- **Database**: Real Firebase development database
 - **Setup**: `setup.ts`
 - **Config**: `jest.config.js` (default)
 - **Command**: `npm run test`
@@ -23,23 +23,16 @@ This project uses a dual testing approach with unit tests and integration tests.
 ## Running Tests
 
 ### Prerequisites
-1. **For Unit Tests**: Start Firebase emulators
-   ```bash
-   firebase emulators:start --only firestore
-   ```
-
-2. **For Integration Tests**: Ensure you have access to the development database
+- Ensure you have access to the development database (`kitty-680c6`)
+- No emulator setup required - all tests use the real dev database
 
 ### Commands
 
 ```bash
-# Check if emulators are running
-npm run test:unit:check
-
-# Run unit tests (requires emulators)
+# Run unit tests (uses dev database)
 npm run test:unit
 
-# Run integration tests (uses real database)
+# Run integration tests (uses dev database)
 npm run test
 
 # Run all tests with coverage
@@ -66,27 +59,38 @@ src/__tests__/
 ├── unit-setup.ts              # Unit test setup
 ├── jest.d.ts                  # TypeScript definitions
 ├── 
-├── # Unit Tests (use emulators)
+├── # Unit Tests (use dev database)
 ├── simpleUnit.unit.test.ts    # Basic app initialization tests
 ├── userValidation.unit.test.ts # Validation schema tests
 ├── validators.unit.test.ts    # Validator utility tests
 ├── 
-└── # Integration Tests (use real DB)
+└── # Integration Tests (use dev database)
 ├── userController.test.ts     # User controller API tests
 └── userCreation.test.ts       # User creation API tests
 ```
 
 ## Recent Improvements
 
+### Major Architecture Change
+**Unified Database Approach**: Both unit and integration tests now use the development database, eliminating emulator dependencies and simplifying the testing setup.
+
+### Benefits of Unified Approach
+1. **No Emulator Dependencies**: No need to start/stop emulators
+2. **Simpler Setup**: Just run tests directly
+3. **Real Firebase Features**: Full Firestore functionality
+4. **Better Performance**: No local emulator overhead
+5. **Consistent Environment**: Same database for all tests
+6. **More Reliable**: No network/port issues
+
 ### Fixed Issues
-1. **Timeout Problems**: Optimized cleanup operations and increased timeouts
-2. **Emulator Dependencies**: Added health checks for emulator availability
-3. **Test Isolation**: Separated true unit tests from integration tests
-4. **Performance**: Reduced test execution time from 291s to ~3s
+1. **Timeout Problems**: Eliminated emulator-related timeouts
+2. **Emulator Dependencies**: Removed complex emulator setup
+3. **Test Isolation**: Maintained through proper cleanup
+4. **Performance**: Faster test execution without emulator overhead
 
 ### Optimizations
 - **Efficient Cleanup**: Track test data IDs for faster cleanup
-- **Emulator Health Checks**: Verify emulators are running before tests
+- **Simplified Configuration**: No emulator health checks needed
 - **Sequential Execution**: Run unit tests sequentially to avoid conflicts
 - **Better Error Handling**: Graceful handling of cleanup failures
 

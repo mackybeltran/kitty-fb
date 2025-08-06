@@ -17,6 +17,9 @@ import {
   generateQRCodeSchema,
   processQRCodeSchema,
   enhancedCreateJoinRequestSchema,
+  nfcConsumptionSchema,
+  nfcProfileUpdateSchema,
+  phoneNumberParamSchema,
   createValidationMiddleware,
   createParamValidationMiddleware,
 } from "../schemas/validationSchemas";
@@ -98,4 +101,17 @@ export const validateGroupAndUserIdParam = createParamValidationMiddleware(
 );
 export const validateGroupAndRequestIdParam = createParamValidationMiddleware(
   groupAndRequestIdParamSchema
+);
+
+// NFC validation
+export const validateNfcConsumption = createValidationMiddleware(
+  nfcConsumptionSchema
+);
+
+export const validateNfcProfileUpdate = createValidationMiddleware(
+  nfcProfileUpdateSchema
+);
+
+export const validatePhoneNumberParam = createParamValidationMiddleware(
+  phoneNumberParamSchema
 );

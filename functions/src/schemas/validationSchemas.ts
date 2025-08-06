@@ -42,6 +42,31 @@ export const createUserSchema = Joi.object({
       "string.max": "Email cannot exceed 255 characters",
       "any.required": "Email is required",
     }),
+  phoneNumber: Joi.string()
+    .pattern(/^\+?[1-9]\d{7,14}$/) // E.164 format: +1234567890
+    .trim()
+    .optional()
+    .messages({
+      "string.pattern.base":
+        "Please provide a valid phone number in international format " +
+        "(e.g., +1234567890)",
+    }),
+});
+
+/**
+ * User profile update schema (for adding phone number after Google Auth)
+ */
+export const updateUserProfileSchema = Joi.object({
+  phoneNumber: Joi.string()
+    .pattern(/^\+?[1-9]\d{7,14}$/) // E.164 format: +1234567890
+    .trim()
+    .required()
+    .messages({
+      "string.pattern.base":
+        "Please provide a valid phone number in international format " +
+        "(e.g., +1234567890)",
+      "any.required": "Phone number is required",
+    }),
 });
 
 /**
@@ -242,7 +267,7 @@ export const userIdParamSchema = Joi.object({
     .min(1)
     .max(100)
     .trim()
-    .pattern(/^[a-zA-Z0-9_-]+$/) // Only allow alphanumeric, underscore, and hyphen
+    .pattern(/^[a-zA-Z0-9_-]+$/) // Only allow alphanumeric, underscore, hyphen
     .required()
     .messages({
       "string.empty": "User ID cannot be empty",
@@ -481,15 +506,15 @@ export const createValidationMiddleware = (schema: Joi.ObjectSchema) => {
       const errorMessages = error.details.map(
         (detail: Joi.ValidationErrorItem) => detail.message
       );
-      
+
       // Create a more descriptive error message that includes field names
       const fieldErrors = error.details.map(
-        (detail: Joi.ValidationErrorItem) => detail.path.join('.')
+        (detail: Joi.ValidationErrorItem) => detail.path.join(".")
       );
-      const errorMessage = fieldErrors.length > 0 
-        ? `Validation failed for fields: ${fieldErrors.join(', ')}`
-        : "Validation failed";
-      
+      const errorMessage = fieldErrors.length > 0 ?
+        `Validation failed for fields: ${fieldErrors.join(", ")}` :
+        "Validation failed";
+
       return res.status(400).json({
         error: errorMessage,
         details: errorMessages,
@@ -630,3 +655,94 @@ export const createParamValidationMiddleware = (schema: Joi.ObjectSchema) => {
     next();
   };
 };
+
+/**
+ * NFC consumption schema
+ */
+export const nfcConsumptionSchema = Joi.object({
+  groupId: Joi.string()
+    .min(1)
+    .max(100)
+    .trim()
+    .required()
+    .messages({
+      "string.empty": "Group ID cannot be empty",
+      "string.min": "Group ID must be at least 1 character",
+      "string.max": "Group ID cannot exceed 100 characters",
+      "any.required": "Group ID is required",
+    }),
+  amount: Joi.number()
+    .integer()
+    .min(1)
+    .max(100)
+    .required()
+    .messages({
+      "number.base": "Amount must be a number",
+      "number.integer": "Amount must be a whole number",
+      "number.min": "Amount must be at least 1",
+      "number.max": "Amount cannot exceed 100",
+      "any.required": "Amount is required",
+    }),
+  phoneNumber: Joi.string()
+    .pattern(/^\+?[1-9]\d{7,14}$/) // E.164 format: +1234567890
+    .trim()
+    .optional()
+    .messages({
+      "string.pattern.base":
+        "Please provide a valid phone number in international format " +
+        "(e.g., +1234567890)",
+    }),
+  userId: Joi.string()
+    .min(1)
+    .max(100)
+    .trim()
+    .optional()
+    .messages({
+      "string.empty": "User ID cannot be empty",
+      "string.min": "User ID must be at least 1 character",
+      "string.max": "User ID cannot exceed 100 characters",
+    }),
+});
+
+/**
+ * NFC profile update schema
+ */
+export const nfcProfileUpdateSchema = Joi.object({
+  userId: Joi.string()
+    .min(1)
+    .max(100)
+    .trim()
+    .required()
+    .messages({
+      "string.empty": "User ID cannot be empty",
+      "string.min": "User ID must be at least 1 character",
+      "string.max": "User ID cannot exceed 100 characters",
+      "any.required": "User ID is required",
+    }),
+  phoneNumber: Joi.string()
+    .pattern(/^\+?[1-9]\d{7,14}$/) // E.164 format: +1234567890
+    .trim()
+    .required()
+    .messages({
+      "string.pattern.base":
+        "Please provide a valid phone number in international format " +
+        "(e.g., +1234567890)",
+      "any.required": "Phone number is required",
+    }),
+});
+
+/**
+ * Phone number parameter schema
+ */
+export const phoneNumberParamSchema = Joi.object({
+  phoneNumber: Joi.string()
+    .pattern(/^\+?[1-9]\d{7,14}$/) // E.164 format: +1234567890
+    .trim()
+    .required()
+    .messages({
+      "string.pattern.base":
+        "Please provide a valid phone number in international format " +
+        "(e.g., +1234567890)",
+      "any.required": "Phone number is required",
+    }),
+});

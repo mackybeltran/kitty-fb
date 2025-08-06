@@ -1,4 +1,4 @@
-/// <reference types="jest" />
+// / <reference types="jest" />
 
 // This file ensures Jest globals are available in TypeScript
 declare global {
@@ -12,4 +12,4 @@ declare global {
   const afterAll: jest.Lifecycle;
 }
 
-export {}; 
+export {};

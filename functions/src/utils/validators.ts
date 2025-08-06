@@ -50,7 +50,7 @@ export async function validateUserExists(
     throw new Error("User not found");
   }
 
-  return { ref: userRef, data: userDoc.data() };
+  return {ref: userRef, data: userDoc.data()};
 }
 
 /**

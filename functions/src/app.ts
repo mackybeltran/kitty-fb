@@ -7,6 +7,7 @@ import {
   TransactionController,
   QRCodeController,
   DevController,
+  NFCController,
 } from "./controllers";
 import {errorHandler, asyncHandler} from "./middleware/errorHandler";
 import {
@@ -26,6 +27,9 @@ import {
   validateUserIdParam,
   validateGroupAndUserIdParam,
   validateGroupAndRequestIdParam,
+  validateNfcConsumption,
+  validateNfcProfileUpdate,
+  validatePhoneNumberParam,
 } from "./middleware/joiValidation";
 
 const app = express();
@@ -196,6 +200,25 @@ if (
   // Reset database (wipe + seed)
   app.post("/dev/reset", asyncHandler(DevController.resetDatabase));
 }
+
+// NFC routes
+app.post(
+  "/nfc/consume",
+  validateNfcConsumption,
+  asyncHandler(NFCController.consume)
+);
+
+app.post(
+  "/nfc/profile",
+  validateNfcProfileUpdate,
+  asyncHandler(NFCController.updateProfile)
+);
+
+app.get(
+  "/nfc/users/:phoneNumber",
+  validatePhoneNumberParam,
+  asyncHandler(NFCController.lookupUser)
+);
 
 // Error handling middleware
 app.use(errorHandler);

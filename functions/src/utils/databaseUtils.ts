@@ -20,11 +20,18 @@ import * as admin from "firebase-admin";
  * @return {boolean} True if dev utilities should be available
  */
 function isDevUtilitiesEnabled(): boolean {
+  // Always allow in Jest environment for testing
+  if (process.env.JEST_WORKER_ID !== undefined) {
+    return true;
+  }
+
   const nodeEnv = process.env.NODE_ENV;
   const enableDevUtilities = process.env.ENABLE_DEV_UTILITIES;
 
   // Allow if explicitly enabled or in development environment
-  return nodeEnv === "development" || enableDevUtilities === "true";
+  return nodeEnv === "development" || 
+         enableDevUtilities === "true" || 
+         nodeEnv === "test";
 }
 
 /**
