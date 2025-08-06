@@ -18,9 +18,9 @@ export class QRCodeController {
   static async generateQRCode(req: Request, res: Response): Promise<void> {
     try {
       const {groupId} = req.params;
-      const {type, size, includeLogo} = req.body;
+      const {type, size} = req.body;
 
-      const result = await generateQRCode(groupId, type, size, includeLogo);
+      const result = await generateQRCode(groupId, type, size);
 
       res.status(200).json({
         success: true,
@@ -73,9 +73,9 @@ export class QRCodeController {
   static async generateQRCodeImage(req: Request, res: Response): Promise<void> {
     try {
       const {groupId} = req.params;
-      const {type, size, includeLogo} = req.body;
+      const {type, size} = req.body;
 
-      const result = await generateQRCode(groupId, type, size, includeLogo);
+      const result = await generateQRCode(groupId, type, size);
 
       // Convert data URL to buffer
       const base64Data = result.qrCodeDataUrl.replace(

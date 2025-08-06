@@ -1,13 +1,20 @@
-import { Request, Response } from 'express';
-import { testEnv, createTestUser, createTestGroup, cleanupTestData } from './unit-setup';
-import { BalanceController } from '../controllers/balanceController';
-import { updateUserBalance } from '../services/firestore';
+import {Request, Response} from "express";
+import {
+  testEnv,
+  createTestUser,
+  createTestGroup,
+  cleanupTestData,
+} from "../setup/unit-setup";
+import {BalanceController} from "../../controllers/balanceController";
+import {updateUserBalance} from "../../services/firestore";
 
 // Mock the firestore service
-jest.mock('../services/firestore');
-const mockUpdateUserBalance = updateUserBalance as jest.MockedFunction<typeof updateUserBalance>;
+jest.mock("../../services/firestore");
+const mockUpdateUserBalance = updateUserBalance as jest.MockedFunction<
+  typeof updateUserBalance
+>;
 
-describe('Balance Controller (Unit Tests)', () => {
+describe("Balance Controller (Unit Tests)", () => {
   let testUserId: string;
   let testGroupId: string;
   let mockRequest: Partial<Request>;
@@ -23,7 +30,7 @@ describe('Balance Controller (Unit Tests)', () => {
     // Setup mock response
     mockJson = jest.fn().mockReturnThis();
     mockStatus = jest.fn().mockReturnThis();
-    
+
     mockResponse = {
       status: mockStatus,
       json: mockJson,
@@ -38,12 +45,12 @@ describe('Balance Controller (Unit Tests)', () => {
     testEnv.cleanup();
   });
 
-  describe('updateUserBalance', () => {
-    it('should update user balance successfully', async () => {
+  describe("updateUserBalance", () => {
+    it("should update user balance successfully", async () => {
       // Arrange
       const amount = 25.50;
-      const adminUserId = 'admin-user-id';
-      
+      const adminUserId = "admin-user-id";
+
       mockRequest = {
         params: {
           groupId: testGroupId,
@@ -72,7 +79,7 @@ describe('Balance Controller (Unit Tests)', () => {
       );
       expect(mockStatus).toHaveBeenCalledWith(200);
       expect(mockJson).toHaveBeenCalledWith({
-        message: 'User balance updated successfully',
+        message: "User balance updated successfully",
         details: {
           groupId: testGroupId,
           userId: testUserId,
@@ -82,11 +89,11 @@ describe('Balance Controller (Unit Tests)', () => {
       });
     });
 
-    it('should handle positive balance updates', async () => {
+    it("should handle positive balance updates", async () => {
       // Arrange
       const amount = 100.00;
-      const adminUserId = 'admin-user-id';
-      
+      const adminUserId = "admin-user-id";
+
       mockRequest = {
         params: {
           groupId: testGroupId,
@@ -116,11 +123,11 @@ describe('Balance Controller (Unit Tests)', () => {
       expect(mockStatus).toHaveBeenCalledWith(200);
     });
 
-    it('should handle negative balance updates', async () => {
+    it("should handle negative balance updates", async () => {
       // Arrange
       const amount = -50.00;
-      const adminUserId = 'admin-user-id';
-      
+      const adminUserId = "admin-user-id";
+
       mockRequest = {
         params: {
           groupId: testGroupId,
@@ -150,11 +157,11 @@ describe('Balance Controller (Unit Tests)', () => {
       expect(mockStatus).toHaveBeenCalledWith(200);
     });
 
-    it('should handle zero balance updates', async () => {
+    it("should handle zero balance updates", async () => {
       // Arrange
       const amount = 0;
-      const adminUserId = 'admin-user-id';
-      
+      const adminUserId = "admin-user-id";
+
       mockRequest = {
         params: {
           groupId: testGroupId,
@@ -184,11 +191,11 @@ describe('Balance Controller (Unit Tests)', () => {
       expect(mockStatus).toHaveBeenCalledWith(200);
     });
 
-    it('should handle decimal balance updates', async () => {
+    it("should handle decimal balance updates", async () => {
       // Arrange
       const amount = 12.75;
-      const adminUserId = 'admin-user-id';
-      
+      const adminUserId = "admin-user-id";
+
       mockRequest = {
         params: {
           groupId: testGroupId,
@@ -218,11 +225,11 @@ describe('Balance Controller (Unit Tests)', () => {
       expect(mockStatus).toHaveBeenCalledWith(200);
     });
 
-    it('should handle different admin users', async () => {
+    it("should handle different admin users", async () => {
       // Arrange
       const amount = 30.00;
-      const adminUserId = 'different-admin-id';
-      
+      const adminUserId = "different-admin-id";
+
       mockRequest = {
         params: {
           groupId: testGroupId,
@@ -250,7 +257,7 @@ describe('Balance Controller (Unit Tests)', () => {
         adminUserId
       );
       expect(mockJson).toHaveBeenCalledWith({
-        message: 'User balance updated successfully',
+        message: "User balance updated successfully",
         details: {
           groupId: testGroupId,
           userId: testUserId,
@@ -260,4 +267,4 @@ describe('Balance Controller (Unit Tests)', () => {
       });
     });
   });
-}); 
+});

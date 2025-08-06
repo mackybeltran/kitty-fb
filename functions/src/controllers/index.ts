@@ -13,3 +13,4 @@ export {BalanceController} from "./balanceController";
 export {TransactionController} from "./transactionController";
 export {QRCodeController} from "./qrCodeController";
 export {DevController} from "./devController";
+export {NFCController} from "./nfcController";

@@ -8,13 +8,15 @@ module.exports = {
     '!src/**/*.d.ts',
     '!src/index.ts',
   ],
-  setupFilesAfterEnv: ['<rootDir>/src/__tests__/unit-setup.ts'], // Uses emulator setup
-  testTimeout: 30000, // Increased timeout to 30 seconds for emulator operations
+  setupFilesAfterEnv: ['<rootDir>/src/__tests__/setup/unit-setup.ts'],
+  testTimeout: 10000, // Reduced timeout since we're not using emulators
   transform: {
     '^.+\\.ts$': 'ts-jest'
   },
-  // Add better handling for async operations
-  maxWorkers: 1, // Run tests sequentially to avoid emulator conflicts
+  // Simplified configuration for dev database
+  maxWorkers: 1, // Run tests sequentially to avoid conflicts
   forceExit: true, // Force exit after tests complete
-  detectOpenHandles: true // Detect any open handles that prevent cleanup
+  detectOpenHandles: true, // Detect any open handles that prevent cleanup
+  // Set environment variables for all unit tests
+  setupFiles: ['<rootDir>/jest.unit.setup.js']
 }; 

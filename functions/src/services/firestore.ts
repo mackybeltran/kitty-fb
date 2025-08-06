@@ -38,6 +38,7 @@ if (!admin.apps.length) {
  *
  * @param {string} displayName - The user's display name
  * @param {string} email - The user's email address
+ * @param {string} [phoneNumber] - The user's phone number (optional)
  * @return {Promise<string>} The ID of the created user
  *
  * @example
@@ -46,17 +47,25 @@ if (!admin.apps.length) {
  */
 export async function createUser(
   displayName: string,
-  email: string
+  email: string,
+  phoneNumber?: string
 ): Promise<string> {
   const db = admin.firestore();
   const userRef = db.collection("users").doc();
 
   // Create the user document with basic information
-  await userRef.set({
+  const userData: any = {
     displayName,
     email,
     createdAt: new Date(),
-  });
+  };
+
+  // Add phone number if provided
+  if (phoneNumber) {
+    userData.phoneNumber = phoneNumber;
+  }
+
+  await userRef.set(userData);
 
   return userRef.id;
 }
@@ -589,7 +598,7 @@ export async function getGroupMembers(groupId: string): Promise<any[]> {
  * console.log("Total groups:", userDetails.groupCount);
  */
 export async function getUserDetails(userId: string): Promise<any> {
-  const { ref: userRef, data: userData } = await validateUserExists(userId);
+  const {ref: userRef, data: userData} = await validateUserExists(userId);
 
   // Get all user's groups
   const groupsSnapshot = await userRef.collection("groups").get();
@@ -1048,8 +1057,7 @@ export async function denyJoinRequest(
 export async function generateQRCode(
   groupId: string,
   type: "dual-purpose" | "onboarding" | "consumption" = "dual-purpose",
-  size = 300,
-  includeLogo = false
+  size = 300
 ): Promise<{
   qrCodeDataUrl: string;
   qrCodeContent: string;
@@ -1243,4 +1251,91 @@ export async function processQRCode(
     }
     throw error;
   }
+}
+
+/**
+ * Updates a user's profile with additional information
+ *
+ * This function is typically used after Google Auth to add
+ * phone number or other profile information that wasn't
+ * available during initial authentication.
+ *
+ * @param {string} userId - The ID of the user to update
+ * @param {Object} updates - The fields to update
+ * @param {string} updates.phoneNumber - The user's phone number (optional)
+ * @return {Promise<void>}
+ *
+ * @example
+ * await updateUserProfile("user123", { phoneNumber: "+1234567890" });
+ * console.log("User profile updated successfully");
+ */
+export async function updateUserProfile(
+  userId: string,
+  updates: { phoneNumber?: string }
+): Promise<void> {
+  const db = admin.firestore();
+  const userRef = db.collection("users").doc(userId);
+
+  // Check if user exists
+  const userDoc = await userRef.get();
+  if (!userDoc.exists) {
+    throw new Error("User not found");
+  }
+
+  // Prepare update data
+  const updateData: any = {};
+
+  if (updates.phoneNumber) {
+    updateData.phoneNumber = updates.phoneNumber;
+    updateData.updatedAt = new Date();
+  }
+
+  // Update the user document
+  await userRef.update(updateData);
+}
+
+/**
+ * Finds a user by their phone number
+ *
+ * This function is used for NFC-based user identification
+ * where the phone number is obtained from the device.
+ *
+ * @param {string} phoneNumber - The phone number to search for
+ * @return {Promise<any>} The user data if found, null otherwise
+ *
+ * @example
+ * const user = await findUserByPhoneNumber("+1234567890");
+ * if (user) {
+ *   console.log("Found user:", user.displayName);
+ * } else {
+ *   console.log("User not found");
+ * }
+ */
+export async function findUserByPhoneNumber(
+  phoneNumber: string
+): Promise<any | null> {
+  const db = admin.firestore();
+
+  // Query users collection for the phone number
+  const usersSnapshot = await db
+    .collection("users")
+    .where("phoneNumber", "==", phoneNumber)
+    .limit(1)
+    .get();
+
+  if (usersSnapshot.empty) {
+    return null;
+  }
+
+  const userDoc = usersSnapshot.docs[0];
+  const userData = userDoc.data();
+
+  return {
+    userId: userDoc.id,
+    displayName: userData.displayName,
+    email: userData.email,
+    phoneNumber: userData.phoneNumber,
+    createdAt: userData.createdAt,
+    updatedAt: userData.updatedAt,
+  };
 }
